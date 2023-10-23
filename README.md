@@ -52,6 +52,11 @@ An application that leverages quantum computing and machine learning to manage c
     ```
     pip install eel openai numpy pennylane weaviate-client
     ```
+9. **Run the Program**: 
+    ```
+    python main.py
+    ```
+
 
 
 
@@ -91,7 +96,10 @@ An application that leverages quantum computing and machine learning to manage c
     ```
     pip3 install eel openai numpy pennylane weaviate-client
     ```
-
+8. **Run the Program**: 
+    ```
+    python main.py
+    ```
 
 
 #### Ubuntu
@@ -140,4 +148,7 @@ An application that leverages quantum computing and machine learning to manage c
     ```
     pip3 install eel openai numpy pennylane weaviate-client
     ```
-
+10. **Run the Program**: 
+    ```
+    python main.py
+    ```
