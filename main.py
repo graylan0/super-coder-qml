@@ -3,6 +3,7 @@ import openai
 import numpy as np
 import pennylane as qml
 import uuid
+import traceback
 import json
 from weaviate import Client
 
@@ -27,6 +28,33 @@ class QuantumCodeManager:
         qml.RZ(param1 + param2, wires=0)
         qml.CNOT(wires=[0, 1])
         return [qml.expval(qml.PauliZ(i)) for i in range(2)]
+
+    def execute_and_test_code(self, code_str):
+        try:
+            exec(code_str)
+            return None  # No bugs
+        except Exception as e:
+            return str(e), traceback.format_exc()
+
+    @eel.expose
+    async def test_and_fix_code(self, code_str):
+        # Step 1: Execute and test the code
+        error_message, traceback_str = self.execute_and_test_code(code_str)
+        
+        if error_message:
+            # Log the bug in Weaviate
+            self.log_bug_in_weaviate(error_message, traceback_str, code_str)
+            
+            # Step 2: Use GPT-4 to suggest a fix
+            suggested_fix = await self.generate_code_with_gpt4(f"Fix the following bug:\n{error_message}\n\nIn the code:\n{code_str}")
+            
+            # Log the suggested fix in Weaviate
+            self.store_data_in_weaviate("CodeFix", {"originalCode": code_str, "suggestedFix": suggested_fix, "quantumID": str(self.generate_quantum_id(code_str))})
+            
+            return f"Bug found and logged. Suggested fix:\n{suggested_fix}"
+        else:
+            return "No bugs found"
+
 
     def generate_quantum_id(self, context):
         param1 = hash(context) % 360
@@ -75,6 +103,16 @@ class QuantumCodeManager:
         identified_placeholders = response['choices'][0]['message']['content'].split('\n')
         lines = code_str.split('\n')
         return {ph: i for i, line in enumerate(lines) for ph in identified_placeholders if ph in line}
+
+    def log_bug_in_weaviate(self, error_message, traceback, code_context):
+        quantum_id = self.generate_quantum_id(code_context)
+        bug_data = {
+            "errorMessage": error_message,
+            "traceback": traceback,
+            "quantumID": str(quantum_id)
+        }
+        self.store_data_in_weaviate("BugData", bug_data)
+
 
     async def generate_code_with_gpt4(context):
         rules = (
