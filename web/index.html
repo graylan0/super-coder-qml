@@ -71,6 +71,8 @@
     <button onclick="identifyPlaceholders()">Identify Placeholders</button>
     <button onclick="fillPlaceholders()">Fill Placeholders</button>
 
+    <input type="text" id="weaviateClientUrl" placeholder="Enter Weaviate Client URL...">
+    <button onclick="setWeaviateClientUrl()">Set Weaviate Client URL</button>
     <!-- Input for API Key -->
     <label for="apiKey">OpenAI API Key:</label>
     <input type="text" id="apiKey" name="apiKey">
@@ -89,10 +91,16 @@
             let filledCode = await eel.fill_placeholders(codeStr)();
             document.getElementById("codeInput").value = filledCode;
         }
+
+        async function setWeaviateClientUrl() {
+            let clientUrl = document.getElementById("weaviateClientUrl").value;
+            await eel.set_weaviate_client_url(clientUrl)();
+        }
+        
         async function setAPIKey() {
-        let apiKey = document.getElementById("apiKey").value;
-        await eel.set_openai_api_key(apiKey)();
-    }
+            let apiKey = document.getElementById("apiKey").value;
+            await eel.set_openai_api_key(apiKey)();
+        }
     </script>
 
 </body>
