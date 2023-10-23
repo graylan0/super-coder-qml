@@ -71,6 +71,12 @@
     <button onclick="identifyPlaceholders()">Identify Placeholders</button>
     <button onclick="fillPlaceholders()">Fill Placeholders</button>
 
+    <!-- Input for API Key -->
+    <label for="apiKey">OpenAI API Key:</label>
+    <input type="text" id="apiKey" name="apiKey">
+    <button onclick="setAPIKey()">Set API Key</button>
+
+
     <script>
         async function identifyPlaceholders() {
             let codeStr = document.getElementById("codeInput").value;
@@ -83,6 +89,10 @@
             let filledCode = await eel.fill_placeholders(codeStr)();
             document.getElementById("codeInput").value = filledCode;
         }
+        async function setAPIKey() {
+        let apiKey = document.getElementById("apiKey").value;
+        await eel.set_openai_api_key(apiKey)();
+    }
     </script>
 
 </body>
