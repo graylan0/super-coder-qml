@@ -9,14 +9,14 @@ from weaviate import Client
 
 class QuantumCodeManager:
     def __init__(self):
-        # Load OpenAI API key from config.json
+        # Load settings from config.json
         with open("config.json", "r") as f:
             config = json.load(f)
             self.openai_api_key = config["openai_api_key"]
+            weaviate_client_url = config.get("weaviate_client_url", "http://localhost:8080")
 
-        openai.api_key = self.openai_api_key  # Set the OpenAI API key
-
-        self.client = Client("http://localhost:8080")
+        openai.api_key = self.openai_api_key
+        self.client = Client(weaviate_client_url)
         self.dev = qml.device("default.qubit", wires=2)
 
         # Apply the decorator here
@@ -153,6 +153,19 @@ class QuantumCodeManager:
             f.truncate()
 
     @eel.expose
+    def set_weaviate_client_url(client_url):
+        # Update the client URL in the Python class
+        manager.client = Client(client_url)
+    
+        # Save the client URL to config.json
+        with open("config.json", "r+") as f:
+            config = json.load(f)
+            config["weaviate_client_url"] = client_url
+            f.seek(0)
+            json.dump(config, f)
+            f.truncate()
+
+    @eel.expose
     async def fill_placeholders(self, code_str):
         placeholder_lines = await self.identify_placeholders_with_gpt4(code_str)
         lines = code_str.split('\n')
@@ -182,4 +195,3 @@ manager = QuantumCodeManager()
 
 # Start Eel
 eel.start('index.html')
-
