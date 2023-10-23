@@ -76,13 +76,28 @@ class QuantumCodeManager:
         lines = code_str.split('\n')
         return {ph: i for i, line in enumerate(lines) for ph in identified_placeholders if ph in line}
 
-    async def generate_code_with_gpt4(self, context):
-        # Assuming you have the OpenAI API set up
+    async def generate_code_with_gpt4(context):
+        rules = (
+            "Rules and Guidelines for Code Generation:\n"
+            "1. The code must be Pythonic and follow PEP 8 guidelines.\n"
+            "2. The code should be efficient and optimized for performance.\n"
+            "3. Include necessary comments to explain complex or non-intuitive parts.\n"
+            "4. Use appropriate data structures for the task at hand.\n"
+            "5. Error handling should be robust, capturing and logging exceptions where necessary.\n"
+            "6. The code should be modular and reusable.\n"
+            "7. If external libraries are used, they should be commonly used and well-maintained.\n"
+            "8. The code should be directly related to the following context:\n"
+            f"{context}\n\n"
+            "Additional Information:\n"
+            "- This application uses GPT-4 to identify and fill code placeholders.\n"
+            "- A unique Quantum ID is generated for each code snippet, which is used for future reference and retrieval."
+        )
         response = openai.ChatCompletion.create(
             model='gpt-4',
-            messages=[{"role": "system", "content": f"Generate code for the following context: {context}"}]
+            messages=[{"role": "system", "content": rules}]
         )
         return response['choices'][0]['message']['content']
+
 
     @eel.expose
     async def identify_placeholders(self, code_str):
