@@ -140,6 +140,17 @@ class QuantumCodeManager:
     @eel.expose
     async def identify_placeholders(self, code_str):
         return list((await self.identify_placeholders_with_gpt4(code_str)).values())
+    
+    @eel.expose
+    def set_openai_api_key(api_key):
+        openai.api_key = api_key
+        # Save the API key to config.json
+        with open("config.json", "r+") as f:
+            config = json.load(f)
+            config["openai_api_key"] = api_key
+            f.seek(0)
+            json.dump(config, f)
+            f.truncate()
 
     @eel.expose
     async def fill_placeholders(self, code_str):
@@ -171,3 +182,4 @@ manager = QuantumCodeManager()
 
 # Start Eel
 eel.start('index.html')
+
