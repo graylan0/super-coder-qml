@@ -17,7 +17,10 @@ def normalize(value, min_value, max_value):
 
 class QuantumCodeManager:
     def __init__(self):
- 
+
+        self.circuit_vector = []  # Initialize an empty list to store circuits
+        self.set_quantum_circuit(self.default_quantum_circuit)  # Set the default circuit and add it to the vector
+
         # Load settings from config.json
         with open("config.json", "r") as f:
             config = json.load(f)
@@ -41,6 +44,7 @@ class QuantumCodeManager:
     def set_quantum_circuit(self, circuit_func: Callable):
         """Set a new quantum circuit function and apply the QNode decorator."""
         self.quantum_circuit = qml.qnode(self.dev)(circuit_func)
+        self.circuit_vector.append(circuit_func)  # Append the new circuit to the vector
 
     def default_quantum_circuit(self, param1, param2):
         """Default quantum circuit definition."""
@@ -52,8 +56,15 @@ class QuantumCodeManager:
 
     async def suggest_quantum_circuit_logic(self):
         """Use GPT-4 to suggest better logic for the quantum circuit."""
-        prompt = "Suggest a better logic for a quantum circuit aimed at solving optimization problems."
+        # Get the last circuit in the vector for reference
+        last_circuit = self.circuit_vector[-1] if self.circuit_vector else None
+        prompt = f"Suggest a better logic for a quantum circuit aimed at solving optimization problems. The circuit must follow the Pennylane library. The last circuit used was: {last_circuit}"
+        
         suggested_logic = await self.generate_code_with_gpt4(prompt)
+        
+        # Assuming the suggested_logic is a Callable, you can set it as the new circuit
+        # self.set_quantum_circuit(suggested_logic)
+        
         return suggested_logic.strip()
 
     async def optimize_code_with_llm(self, line):
