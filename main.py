@@ -18,6 +18,33 @@ def normalize(value, min_value, max_value):
 class QuantumCodeManager:
     def __init__(self):
 
+    @eel.expose
+    async def inject_data_into_weaviate(self, data: str):
+        """
+        Inject data into the Weaviate database.
+        """
+        # Generate a unique identifier for the data
+        unique_id = generate_uuid5(data)
+
+        # Create the data object in Weaviate
+        try:
+            async with self.session.post(
+                f"{self.client.url}/objects",
+                json={
+                    "class": "InjectedData",
+                    "id": unique_id,
+                    "properties": {
+                        "data": data
+                    }
+                }
+            ) as response:
+                if response.status != 200:
+                    print(f"Failed to inject data: {await response.text()}")
+                else:
+                    print(f"Successfully injected data with ID: {unique_id}")
+        except Exception as e:
+            print(f"Error injecting data into Weaviate: {e}")
+
         self.circuit_vector = []  # Initialize an empty list to store circuits
         self.set_quantum_circuit(self.default_quantum_circuit)  # Set the default circuit and add it to the vector
 
