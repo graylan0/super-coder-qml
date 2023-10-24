@@ -3,7 +3,9 @@
 ![image](https://github.com/graylan0/super-coder-qml/assets/34530588/a0cf1373-465a-4f6e-bc84-3387d454e537)
 
 
-Demo Image :  ![image](https://github.com/graylan0/super-coder-qml/assets/34530588/a944896b-0b50-48a4-b18a-0fa154669add)
+Demo Imagev1 :  ![image](https://github.com/graylan0/super-coder-qml/assets/34530588/a944896b-0b50-48a4-b18a-0fa154669add)
+
+Demo Imagev2 : ![image](https://github.com/graylan0/super-coder-qml/assets/34530588/fd0ee425-7304-444f-a897-611527210290)
 
 ![image](https://github.com/graylan0/super-coder-qml/assets/34530588/5a2227bf-d257-4fd4-9036-7968df4d4538)
 
