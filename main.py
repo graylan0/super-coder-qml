@@ -320,23 +320,16 @@ def start_eel():
     eel.init('web')
     manager = QuantumCodeManager()
 
-    # Create a new event loop for this thread
-    loop = asyncio.new_event_loop()
-    asyncio.set_event_loop(loop)
-
     # Suggest better quantum circuit logic using GPT-4
+    loop = asyncio.get_event_loop()
     suggested_logic = loop.run_until_complete(manager.suggest_quantum_circuit_logic())
     print(f"Suggested Quantum Circuit Logic:\n{suggested_logic}")
 
-    eel.start('index.html', block=False)
+    eel.start('index.html', block=True)
     return manager  # Return the manager object
 
 if __name__ == "__main__":
-    # Start Eel in a separate thread
-    eel_thread = threading.Thread(target=start_eel)
-    eel_thread.start()
-
-    # Get the manager object from start_eel
+    # Start Eel and get the manager object
     manager = start_eel()
 
     # Run asyncio event loop in the main thread
