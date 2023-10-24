@@ -2,10 +2,12 @@ import eel
 import openai
 import numpy as np
 import pennylane as qml
+import asyncio
 import uuid
 import hashlib
 import traceback
 import json
+from typing import Callable
 from weaviate import Client
 
 def normalize(value, min_value, max_value):
@@ -29,6 +31,34 @@ class QuantumCodeManager:
         # Apply the decorator here
         self.quantum_circuit = qml.qnode(self.dev)(self.quantum_circuit)
 
+
+        # Initialize with a default quantum circuit
+        self.set_quantum_circuit(self.default_quantum_circuit)
+
+    def set_quantum_circuit(self, circuit_func: Callable):
+        """Set a new quantum circuit function and apply the QNode decorator."""
+        self.quantum_circuit = qml.qnode(self.dev)(circuit_func)
+
+    def default_quantum_circuit(self, param1, param2):
+        """Default quantum circuit definition."""
+        qml.RX(param1, wires=0)
+        qml.RY(param2, wires=1)
+        qml.RZ(param1 + param2, wires=0)
+        qml.CNOT(wires=[0, 1])
+        return [qml.expval(qml.PauliZ(i)) for i in range(2)]
+
+    async def suggest_quantum_circuit_logic(self):
+        """Use GPT-4 to suggest better logic for the quantum circuit."""
+        prompt = "Suggest a better logic for a quantum circuit aimed at solving optimization problems."
+        suggested_logic = await self.generate_code_with_gpt4(prompt)
+        return suggested_logic.strip()
+
+    async def optimize_code_with_llm(self, line):
+        """Optimize a line of code using LLM (Language Model)."""
+        prompt = f"Optimize the following line of code:\n{line}"
+        optimized_line = await self.generate_code_with_gpt4(prompt)
+        return optimized_line.strip()
+    
     async def should_entangle(self, line):
         """Use LLM to decide if this line should be entangled with another line."""
         prompt = f"Should the following line of code be entangled with another line? If yes, provide the Quantum ID or context that it should be entangled with.\nLine: {line}"
@@ -273,6 +303,10 @@ class QuantumCodeManager:
 # Initialize Eel and QuantumCodeManager
 eel.init('web')
 manager = QuantumCodeManager()
+
+# Suggest better quantum circuit logic using GPT-4
+suggested_logic = asyncio.run(manager.suggest_quantum_circuit_logic())
+print(f"Suggested Quantum Circuit Logic:\n{suggested_logic}")
 
 # Start Eel
 eel.start('index.html')
