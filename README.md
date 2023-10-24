@@ -1,4 +1,4 @@
-# super-coder-qml
+# super-coder-qml EXPERIMENTAL (BUGS ARE NOT SOLVED)
 
 ![image](https://github.com/graylan0/super-coder-qml/assets/34530588/a0cf1373-465a-4f6e-bc84-3387d454e537)
 
