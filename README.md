@@ -53,7 +53,7 @@ An application that leverages quantum computing and machine learning to manage c
 
 8. **Install Required Libraries**: 
     ```
-    pip install eel openai numpy pennylane weaviate-client
+    pip install eel openai numpy pennylane weaviate-client asyncio
     ```
 9. **Run the Program**: 
     ```
@@ -97,7 +97,7 @@ An application that leverages quantum computing and machine learning to manage c
 
 7. **Install Required Libraries**: 
     ```
-    pip3 install eel openai numpy pennylane weaviate-client
+    pip3 install eel openai numpy pennylane weaviate-client asyncio
     ```
 8. **Run the Program**: 
     ```
@@ -149,7 +149,7 @@ An application that leverages quantum computing and machine learning to manage c
 
 9. **Install Required Libraries**: Install all the Python libraries required for the project.
     ```
-    pip3 install eel openai numpy pennylane weaviate-client
+    pip3 install eel openai numpy pennylane weaviate-client asyncio
     ```
 10. **Run the Program**: 
     ```
