@@ -39,11 +39,17 @@ class QuantumCodeManager:
         # Load settings from config.json
         with open("config.json", "r") as f:
             config = json.load(f)
+
+        # Initialize weaviate_client_url to a default value
+        weaviate_client_url = "http://localhost:8080"
+
         try:
             self.openai_api_key = config["openai_api_key"]
+            weaviate_client_url = config.get("weaviate_client_url", weaviate_client_url)
         except KeyError:
             print("openai_api_key not found in config.json")
-            weaviate_client_url = config.get("weaviate_client_url", "http://localhost:8080")
+
+        self.client = Client(weaviate_client_url)
 
         self.session = aiohttp.ClientSession()  # Create an aiohttp session      
 
@@ -58,7 +64,7 @@ class QuantumCodeManager:
 
     def __del__(self):
         self.session.close()
-        
+
     def set_quantum_circuit(self, circuit_func: Callable):
         """Set a new quantum circuit function and apply the QNode decorator."""
         self.quantum_circuit = qml.qnode(self.dev)(circuit_func)
