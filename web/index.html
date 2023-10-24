@@ -1,72 +1,104 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Settings - Quantum Code Manager</title>
+    <title>Quantum Code Manager</title>
     <link rel="stylesheet" href="css/all.min.css">
     <script type="text/javascript" src="eel.js"></script>
     <style>
-        /* Reusing styles from the main page */
-        /* ... */
+        /* Tesla-Inspired Styling */
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #000;
+            color: #fff;
+        }
+
+        .container {
+            max-width: 900px;
+            margin: auto;
+            background: #1a1a1a;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+        }
+
+        .menu {
+            display: flex;
+            justify-content: space-around;
+            background-color: #333;
+            padding: 14px;
+            font-size: 18px;
+        }
+
+        .menu a {
+            color: white;
+            text-decoration: none;
+        }
+
+        textarea, input[type="text"] {
+            width: 100%;
+            padding: 15px;
+            margin: 15px 0 25px;
+            border: 1px solid #555;
+            border-radius: 4px;
+            font-size: 18px;
+            background-color: #333;
+            color: #fff;
+        }
+
+        button {
+            background-color: #555;
+            color: white;
+            padding: 14px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 18px;
+        }
+
+        button i {
+            margin-right: 8px;
+        }
+
+        #directiveBox {
+            background-color: #2a2a2a;
+            border: 2px solid #555;
+        }
     </style>
 </head>
 <body>
 
     <div class="menu">
         <a href="index.html">Home</a>
-        <a href="#features">Features</a>
-        <a href="#settings">Settings</a>
+        <a href="settings.html">Settings</a> 
     </div>
 
-    <h1>Settings</h1>
+    <div class="container">
+        <h1>Quantum Code Manager</h1>
 
-    <!-- Weaviate Client URL -->
-    <label for="weaviateClientUrl">Weaviate Client URL:</label>
-    <input type="text" id="weaviateClientUrl" placeholder="Enter Weaviate Client URL...">
-    <button onclick="setWeaviateClientUrl()">Set Weaviate Client URL</button><br>
+        <textarea id="codeInput" placeholder="Enter your code with placeholders..."></textarea>
 
-    <!-- OpenAI API Key -->
-    <label for="apiKey">OpenAI API Key:</label>
-    <input type="text" id="apiKey" name="apiKey">
-    <button onclick="setAPIKey()">Set API Key</button><br>
+        <input type="text" id="directiveBox" placeholder="Enter Directive...">
 
-    <!-- Inject Data into Weaviate -->
-    <label for="weaviateData">Inject Data into Weaviate:</label>
-    <textarea id="weaviateData" placeholder="Enter data to inject into Weaviate..."></textarea>
-    <button onclick="injectWeaviateData()">Inject Data</button><br>
-
-    <!-- Additional Settings (placeholders) -->
-    <label for="additionalSetting1">Additional Setting 1:</label>
-    <input type="text" id="additionalSetting1" placeholder="Enter value...">
-    <button onclick="setAdditionalSetting1()">Set</button><br>
-
-    <label for="additionalSetting2">Additional Setting 2:</label>
-    <input type="text" id="additionalSetting2" placeholder="Enter value...">
-    <button onclick="setAdditionalSetting2()">Set</button><br>
+        <button onclick="identifyPlaceholders()"><i class="fas fa-search"></i>Identify Placeholders</button>
+        <button onclick="fillPlaceholders()"><i class="fas fa-pen"></i>Fill Placeholders</button>
+    </div>
 
     <script>
-        // JavaScript functions for settings
-        async function setWeaviateClientUrl() {
-            let clientUrl = document.getElementById("weaviateClientUrl").value;
-            await eel.set_weaviate_client_url(clientUrl)();
+        // JavaScript function to identify placeholders
+        async function identifyPlaceholders() {
+            let code = document.getElementById("codeInput").value;
+            let lines = await eel.identify_placeholders(code)();
+            console.log("Identified placeholders at lines:", lines);
         }
 
-        async function setAPIKey() {
-            let apiKey = document.getElementById("apiKey").value;
-            await eel.set_openai_api_key(apiKey)();
+        // JavaScript function to fill placeholders
+        async function fillPlaceholders() {
+            let code = document.getElementById("codeInput").value;
+            let filledCode = await eel.fill_placeholders(code)();
+            document.getElementById("codeInput").value = filledCode;
         }
-
-        async function injectWeaviateData() {
-            let data = document.getElementById("weaviateData").value;
-            await eel.inject_data_into_weaviate(data)();
-        }
-
-        // Additional settings functions can go here
     </script>
 
 </body>
 </html>
 
-    </script>
-
-</body>
-</html>
