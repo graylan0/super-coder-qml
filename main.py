@@ -237,15 +237,6 @@ class QuantumCodeManager:
         lines = code_str.split('\n')
         return {ph: i for i, line in enumerate(lines) for ph in identified_placeholders if ph in line}
 
-    def log_bug_in_weaviate(self, error_message, traceback, code_context):
-        quantum_id = self.generate_quantum_id(code_context)
-        bug_data = {
-            "errorMessage": error_message,
-            "traceback": traceback,
-            "quantumID": str(quantum_id)
-        }
-        self.store_data_in_weaviate("BugData", bug_data)
-
     async def generate_code_with_gpt4(self, context):
         rules = (
             "Rules and Guidelines for Code Generation:\n"
