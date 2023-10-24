@@ -109,6 +109,7 @@ class QuantumCodeManager:
         self.store_data_in_weaviate("EntangledLines", {"entangledLines": json.dumps(entangled_lines)})
 
         return '\n'.join(optimized_lines)
+        
     def quantum_circuit(self, param1, param2):
         # Quantum circuit definition
         qml.RX(param1, wires=0)
