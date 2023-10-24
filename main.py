@@ -247,4 +247,3 @@ manager = QuantumCodeManager()
 
 # Start Eel
 eel.start('index.html')
-
