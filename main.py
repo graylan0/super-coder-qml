@@ -31,6 +31,7 @@ class QuantumCodeManager:
         # Apply the decorator here
         self.quantum_circuit = qml.qnode(self.dev)(self.quantum_circuit)
 
+
         # Initialize with a default quantum circuit
         self.set_quantum_circuit(self.default_quantum_circuit)
 
@@ -109,7 +110,6 @@ class QuantumCodeManager:
         self.store_data_in_weaviate("EntangledLines", {"entangledLines": json.dumps(entangled_lines)})
 
         return '\n'.join(optimized_lines)
-        
     def quantum_circuit(self, param1, param2):
         # Quantum circuit definition
         qml.RX(param1, wires=0)
@@ -118,13 +118,22 @@ class QuantumCodeManager:
         qml.CNOT(wires=[0, 1])
         return [qml.expval(qml.PauliZ(i)) for i in range(2)]
 
-    def execute_and_test_code(self, code_str):
+    async def execute_and_test_code(self, code_str):
         try:
             exec(code_str)
             return None  # No bugs
         except Exception as e:
             return str(e), traceback.format_exc()
 
+    async def log_bug_in_weaviate(self, error_message, traceback, code_context):
+        quantum_id = self.generate_quantum_id(code_context)
+        bug_data = {
+            "errorMessage": error_message,
+            "traceback": traceback,
+            "quantumID": str(quantum_id)
+        }
+        await self.store_data_in_weaviate("BugData", bug_data)
+        
     @eel.expose
     async def test_and_fix_code(self, code_str):
         # Step 1: Execute and test the code
@@ -143,7 +152,10 @@ class QuantumCodeManager:
             return f"Bug found and logged. Suggested fix:\n{suggested_fix}"
         else:
             return "No bugs found"
-            
+
+
+
+
     def generate_quantum_id(self, context):
         """
         Generate a Quantum ID based on the given context.
@@ -221,6 +233,7 @@ class QuantumCodeManager:
         }
         self.store_data_in_weaviate("BugData", bug_data)
 
+
     async def generate_code_with_gpt4(self, context):
         rules = (
             "Rules and Guidelines for Code Generation:\n"
@@ -242,6 +255,7 @@ class QuantumCodeManager:
             messages=[{"role": "system", "content": rules}]
         )
         return response['choices'][0]['message']['content']
+
 
     @eel.expose
     async def identify_placeholders(self, code_str):
