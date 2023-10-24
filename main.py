@@ -31,7 +31,6 @@ class QuantumCodeManager:
         # Apply the decorator here
         self.quantum_circuit = qml.qnode(self.dev)(self.quantum_circuit)
 
-
         # Initialize with a default quantum circuit
         self.set_quantum_circuit(self.default_quantum_circuit)
 
@@ -143,10 +142,7 @@ class QuantumCodeManager:
             return f"Bug found and logged. Suggested fix:\n{suggested_fix}"
         else:
             return "No bugs found"
-
-
-
-
+            
     def generate_quantum_id(self, context):
         """
         Generate a Quantum ID based on the given context.
@@ -224,7 +220,6 @@ class QuantumCodeManager:
         }
         self.store_data_in_weaviate("BugData", bug_data)
 
-
     async def generate_code_with_gpt4(self, context):
         rules = (
             "Rules and Guidelines for Code Generation:\n"
@@ -246,7 +241,6 @@ class QuantumCodeManager:
             messages=[{"role": "system", "content": rules}]
         )
         return response['choices'][0]['message']['content']
-
 
     @eel.expose
     async def identify_placeholders(self, code_str):
