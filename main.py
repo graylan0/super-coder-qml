@@ -8,6 +8,7 @@ import hashlib
 import traceback
 import json
 from typing import Callable
+from types import FunctionType
 from weaviate.util import generate_uuid5
 from weaviate import Client
 from transformers import pipeline
@@ -37,38 +38,47 @@ class QuantumCodeManager:
         self.circuit_vector = []  # Initialize an empty list to store circuits
 
         # Load settings from config.json
-        with open("config.json", "r") as f:
-            config = json.load(f)
-
-        # Initialize weaviate_client_url to a default value
-        weaviate_client_url = "http://localhost:8080"
-
         try:
+            with open("config.json", "r") as f:
+                config = json.load(f)
             self.openai_api_key = config["openai_api_key"]
-            weaviate_client_url = config.get("weaviate_client_url", weaviate_client_url)
-        except KeyError:
-            print("openai_api_key not found in config.json")
+            weaviate_client_url = config.get("weaviate_client_url", "http://localhost:8080")
+        except (FileNotFoundError, KeyError, json.JSONDecodeError) as e:
+            print(f"Error reading config.json: {e}")
+            self.openai_api_key = None
+            weaviate_client_url = "http://localhost:8080"
 
+        # Initialize Weaviate client
         self.client = Client(weaviate_client_url)
 
-        self.session = aiohttp.ClientSession()  # Create an aiohttp session      
+        # Initialize aiohttp session
+        self.session = aiohttp.ClientSession()
 
         # Initialize OpenAI API key
-        openai.api_key = self.openai_api_key  # Consider using OpenAI's official method if available
+        if self.openai_api_key:
+            openai.api_key = self.openai_api_key  # Consider using OpenAI's official method if available
 
-        self.client = Client(weaviate_client_url)
-        self.dev = qml.device("default.qubit", wires=2)  # Define self.dev here
+        # Initialize quantum device
+        self.dev = qml.device("default.qubit", wires=2)
 
-        # Now it's safe to call this
-        self.set_quantum_circuit(self.default_quantum_circuit)  # Set the default circuit and add it to the vector
+        # Set the default quantum circuit
+        self.set_quantum_circuit(self.default_quantum_circuit)
 
     def __del__(self):
         self.session.close()
 
-    def set_quantum_circuit(self, circuit_func: Callable):
-        """Set a new quantum circuit function and apply the QNode decorator."""
-        self.quantum_circuit = qml.qnode(self.dev)(circuit_func)
-        self.circuit_vector.append(circuit_func)  # Append the new circuit to the vector
+    def set_quantum_circuit(self, new_circuit_logic: Callable):
+        """
+        Sets the new quantum circuit logic.
+
+        Args:
+            new_circuit_logic (Callable): The new quantum circuit logic to set.
+        """
+        if callable(new_circuit_logic):
+            self.current_quantum_circuit = new_circuit_logic  # Set the current quantum circuit
+            self.circuit_vector.append(new_circuit_logic)  # Append the new circuit to the vector
+        else:
+            print("Error: Provided logic is not callable.")
 
     def generate_images(self, message):
         url = 'http://127.0.0.1:7860/sdapi/v1/txt2img'
@@ -140,12 +150,32 @@ class QuantumCodeManager:
         # Get the last circuit in the vector for reference
         last_circuit = self.circuit_vector[-1] if self.circuit_vector else None
         prompt = f"Suggest a better logic for a quantum circuit aimed at solving optimization problems. The circuit must follow the Pennylane library. The last circuit used was: {last_circuit}"
-        
+    
         suggested_logic = await self.generate_code_with_gpt4(prompt)
+    
+        if not suggested_logic:
+            print("Error: GPT-4 did not return any suggested logic.")
+            return None
+
+        # Try to convert the string to a callable function
+        try:
+            exec_globals = {}
+            exec_locals = {}
+            exec(f"{suggested_logic.strip()}", exec_globals, exec_locals)
         
-        # Assuming the suggested_logic is a Callable, you can set it as the new circuit
-        # self.set_quantum_circuit(suggested_logic)
-        
+            # Find the first callable in the local namespace and set it as the new circuit
+            for name, obj in exec_locals.items():
+                if isinstance(obj, FunctionType):
+                    self.set_quantum_circuit(obj)
+                    break
+            else:
+                print("Error: No callable function found in the suggested logic.")
+                return None
+
+        except Exception as e:
+            print(f"Error: Could not convert the suggested logic to a callable function. Exception: {e}")
+            return None
+    
         return suggested_logic.strip()
 
     async def optimize_code_with_llm(self, line):
