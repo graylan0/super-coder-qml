@@ -304,4 +304,3 @@ print(f"Suggested Quantum Circuit Logic:\n{suggested_logic}")
 
 # Start Eel
 eel.start('index.html')
-
