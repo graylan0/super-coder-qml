@@ -11,7 +11,7 @@ An application that leverages quantum computing and machine learning to manage c
 
 ### Installation Guide
 
-
+Install automatic1111 with --api enabled for your specific os
 
 #### Windows
 
