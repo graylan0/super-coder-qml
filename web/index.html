@@ -1,106 +1,71 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Quantum Code Manager</title>
-    <script type="text/javascript" src="/eel.js"></script>
+    <title>Settings - Quantum Code Manager</title>
+    <link rel="stylesheet" href="css/all.min.css">
+    <script type="text/javascript" src="eel.js"></script>
     <style>
-        /* Matrix theme */
-        body {
-            background-color: black;
-            color: lime;
-            font-family: 'Courier New', monospace;
-        }
-
-        /* Top menu */
-        .menu {
-            background-color: #333;
-            overflow: hidden;
-        }
-
-        .menu a {
-            float: left;
-            display: block;
-            color: lime;
-            text-align: center;
-            padding: 14px 16px;
-            text-decoration: none;
-        }
-
-        /* Highlighted & Circular buttons */
-        button {
-            background-color: lime;
-            color: black;
-            border: none;
-            border-radius: 50%; /* Circular shape */
-            padding: 14px 28px;
-            font-size: 16px;
-            cursor: pointer;
-        }
-
-        button:hover {
-            background-color: #ddd;
-            color: lime;
-        }
-
-        /* Textarea */
-        textarea {
-            width: 100%;
-            height: 300px;
-            padding: 12px 20px;
-            margin: 8px 0;
-            box-sizing: border-box;
-            border: 2px solid lime;
-            border-radius: 4px;
-            background-color: black;
-            color: lime;
-        }
+        /* Reusing styles from the main page */
+        /* ... */
     </style>
 </head>
 <body>
 
     <div class="menu">
-        <a href="#home">Home</a>
+        <a href="index.html">Home</a>
         <a href="#features">Features</a>
-        <a href="#about">About</a>
+        <a href="#settings">Settings</a>
     </div>
 
-    <h1>Quantum Code Manager</h1>
+    <h1>Settings</h1>
 
-    <textarea id="codeInput" placeholder="Enter your code with placeholders..."></textarea><br>
-
-    <button onclick="identifyPlaceholders()">Identify Placeholders</button>
-    <button onclick="fillPlaceholders()">Fill Placeholders</button>
-
+    <!-- Weaviate Client URL -->
+    <label for="weaviateClientUrl">Weaviate Client URL:</label>
     <input type="text" id="weaviateClientUrl" placeholder="Enter Weaviate Client URL...">
-    <button onclick="setWeaviateClientUrl()">Set Weaviate Client URL</button>
-    <!-- Input for API Key -->
+    <button onclick="setWeaviateClientUrl()">Set Weaviate Client URL</button><br>
+
+    <!-- OpenAI API Key -->
     <label for="apiKey">OpenAI API Key:</label>
     <input type="text" id="apiKey" name="apiKey">
-    <button onclick="setAPIKey()">Set API Key</button>
+    <button onclick="setAPIKey()">Set API Key</button><br>
 
+    <!-- Inject Data into Weaviate -->
+    <label for="weaviateData">Inject Data into Weaviate:</label>
+    <textarea id="weaviateData" placeholder="Enter data to inject into Weaviate..."></textarea>
+    <button onclick="injectWeaviateData()">Inject Data</button><br>
+
+    <!-- Additional Settings (placeholders) -->
+    <label for="additionalSetting1">Additional Setting 1:</label>
+    <input type="text" id="additionalSetting1" placeholder="Enter value...">
+    <button onclick="setAdditionalSetting1()">Set</button><br>
+
+    <label for="additionalSetting2">Additional Setting 2:</label>
+    <input type="text" id="additionalSetting2" placeholder="Enter value...">
+    <button onclick="setAdditionalSetting2()">Set</button><br>
 
     <script>
-        async function identifyPlaceholders() {
-            let codeStr = document.getElementById("codeInput").value;
-            let placeholderLines = await eel.identify_placeholders(codeStr)();
-            alert("Placeholders found at lines: " + placeholderLines.join(", "));
-        }
-
-        async function fillPlaceholders() {
-            let codeStr = document.getElementById("codeInput").value;
-            let filledCode = await eel.fill_placeholders(codeStr)();
-            document.getElementById("codeInput").value = filledCode;
-        }
-
+        // JavaScript functions for settings
         async function setWeaviateClientUrl() {
             let clientUrl = document.getElementById("weaviateClientUrl").value;
             await eel.set_weaviate_client_url(clientUrl)();
         }
-        
+
         async function setAPIKey() {
             let apiKey = document.getElementById("apiKey").value;
             await eel.set_openai_api_key(apiKey)();
         }
+
+        async function injectWeaviateData() {
+            let data = document.getElementById("weaviateData").value;
+            await eel.inject_data_into_weaviate(data)();
+        }
+
+        // Additional settings functions can go here
+    </script>
+
+</body>
+</html>
+
     </script>
 
 </body>
