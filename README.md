@@ -15,7 +15,7 @@ An application that leverages quantum computing and machine learning to manage c
 
 #### Windows
 
-
+Install Weaviate by changing into the directory with the files after cloning the git (in step 6) by running  `docker compose up -d`  https://weaviate.io/developers/weaviate/installation/docker-compose
 
 1. **Download Python 3.10**: Visit the [Python 3.10 Download Link](https://www.python.org/downloads/release/python-3100/) and download the installer for Windows.
     ```
@@ -66,6 +66,8 @@ An application that leverages quantum computing and machine learning to manage c
 
 #### macOS
 
+Install Weaviate by changing into the directory with the files after cloning the git (in step 6) by running  `docker compose up -d`  https://weaviate.io/developers/weaviate/installation/docker-compose
+
 1. **Download Python 3.10**: Visit the [Python 3.10 Download Link](https://www.python.org/downloads/release/python-3100/) and download the macOS installer.
     ```
     Click on "macOS 64-bit universal2 installer"
@@ -107,6 +109,8 @@ An application that leverages quantum computing and machine learning to manage c
 
 
 #### Ubuntu
+
+Install Weaviate by changing into the directory with the files after cloning the git (in step 6) by running  `docker compose up -d`  https://weaviate.io/developers/weaviate/installation/docker-compose
 
 1. **Update Repositories and Packages**: Before installing any software, it's good practice to update the repositories and installed packages to their latest versions.
     ```
