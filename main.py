@@ -1,10 +1,9 @@
 import eel
 import openai
-import threading
+import aiohttp
 import numpy as np
 import pennylane as qml
 import asyncio
-import uuid
 import hashlib
 import traceback
 import json
@@ -18,11 +17,14 @@ def normalize(value, min_value, max_value):
 
 class QuantumCodeManager:
     def __init__(self):
+ 
         # Load settings from config.json
         with open("config.json", "r") as f:
             config = json.load(f)
             self.openai_api_key = config["openai_api_key"]
             weaviate_client_url = config.get("weaviate_client_url", "http://localhost:8080")
+
+        self.session = aiohttp.ClientSession()  # Create an aiohttp session      
 
         # Initialize OpenAI API key
         openai.api_key = self.openai_api_key  # Consider using OpenAI's official method if available
@@ -179,35 +181,26 @@ class QuantumCodeManager:
             print(f"An error occurred while generating the Quantum ID: {e}")
             return None
 
-    def store_data_in_weaviate(self, class_name, data):
+    async def store_data_in_weaviate(self, class_name, data):
         try:
             # Generate a deterministic UUID based on the data
             unique_id = generate_uuid5(data)
             
-            # Validate the data object before creation
-            validation_result = self.client.data_object.validate(
-                data_object=data,
-                class_name=class_name,
-                uuid=unique_id
-            )
-            
-            # Check if the validation was successful
-            if 'error' in validation_result:
-                print(f"Validation failed: {validation_result['error']}")
-                return
-            
-            # Create the data object in Weaviate
-            self.client.data_object.create(
-                className=class_name,
-                dataObject={
+            # Create the data object in Weaviate asynchronously
+            async with self.session.post(
+                f"{self.client.url}/objects",
+                json={
+                    "class": class_name,
                     "id": unique_id,
                     "properties": data
                 }
-            )
+            ) as response:
+                if response.status != 200:
+                    print(f"Failed to store data: {await response.text()}")
         except Exception as e:
             print(f"Error storing data in Weaviate: {e}")
 
-    def retrieve_relevant_code_from_weaviate(self, quantum_id):
+    async def retrieve_relevant_code_from_weaviate(self, quantum_id):
         try:
             query = {
                 "operator": "Equal",
@@ -218,14 +211,18 @@ class QuantumCodeManager:
                     }
                 ]
             }
-            results = self.client.query.get('CodeSnippet', ['code']).with_where(query).do()
-            if 'data' in results and 'Get' in results['data']:
-                return results['data']['Get']['CodeSnippet'][0]['code']
-            else:
-                return None
+            async with self.session.get(
+                f"{self.client.url}/objects",
+                params={"where": query}
+            ) as response:
+                if response.status == 200:
+                    results = await response.json()
+                    return results['data']['Get']['CodeSnippet'][0]['code']
+                else:
+                    print(f"Failed to retrieve data: {await response.text()}")
+                    return None
         except Exception as e:
             print(f"Error retrieving data from Weaviate: {e}")
-            return None
 
     async def identify_placeholders_with_gpt4(self, code_str):
         # Assuming you have the OpenAI API set up
