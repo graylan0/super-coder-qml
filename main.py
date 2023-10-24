@@ -8,15 +8,31 @@ import hashlib
 import traceback
 import json
 from typing import Callable
-from weaviate.util import generate_uuid5 
+from weaviate.util import generate_uuid5
 from weaviate import Client
+from transformers import pipeline
+import requests
+from PIL import Image, ImageTk
+import io
+import base64
+import random
+import sys
 
 def normalize(value, min_value, max_value):
     """Normalize a value to a given range."""
     return min_value + (max_value - min_value) * (value / 0xFFFFFFFFFFFFFFFF)
 
+class AestheticEvaluator:
+    def __init__(self):
+        self.pipe = pipeline("image-classification", model="cafeai/cafe_aesthetic")
+
+    def evaluate_aesthetic(self, image_path):
+        result = self.pipe(image_path)
+        return result[0]['score']
+
 class QuantumCodeManager:
     def __init__(self):
+        self.aesthetic_evaluator = AestheticEvaluator()
         self.circuit_vector = []  # Initialize an empty list to store circuits
 
         # Load settings from config.json
@@ -40,6 +56,32 @@ class QuantumCodeManager:
         """Set a new quantum circuit function and apply the QNode decorator."""
         self.quantum_circuit = qml.qnode(self.dev)(circuit_func)
         self.circuit_vector.append(circuit_func)  # Append the new circuit to the vector
+
+    def generate_images(self, message):
+        url = 'http://127.0.0.1:7860/sdapi/v1/txt2img'
+        payload = {
+            "prompt": message,
+            "steps": 50,
+            "seed": random.randrange(sys.maxsize),
+            "enable_hr": "false",
+            "denoising_strength": "0.7",
+            "cfg_scale": "7",
+            "width": 1280,
+            "height": 512,
+            "restore_faces": "true",
+        }
+        response = requests.post(url, json=payload)
+        if response.status_code == 200:
+            try:
+                r = response.json()
+                for i in r['images']:
+                    image = Image.open(io.BytesIO(base64.b64decode(i.split(",", 1)[0])))
+                    img_tk = ImageTk.PhotoImage(image)
+                    eel.display_image(img_tk)  # Display the image in the GUI
+            except ValueError as e:
+                print("Error processing image data: ", e)
+        else:
+            print("Error generating image: ", response.status_code)
 
     def default_quantum_circuit(self, param1, param2):
         """Default quantum circuit definition."""
