@@ -16,6 +16,7 @@ from PIL import Image, ImageTk
 import io
 import base64
 import random
+import logging
 import sys
 
 def normalize(value, min_value, max_value):
@@ -38,7 +39,10 @@ class QuantumCodeManager:
         # Load settings from config.json
         with open("config.json", "r") as f:
             config = json.load(f)
+        try:
             self.openai_api_key = config["openai_api_key"]
+        except KeyError:
+            print("openai_api_key not found in config.json")
             weaviate_client_url = config.get("weaviate_client_url", "http://localhost:8080")
 
         self.session = aiohttp.ClientSession()  # Create an aiohttp session      
@@ -52,6 +56,9 @@ class QuantumCodeManager:
         # Now it's safe to call this
         self.set_quantum_circuit(self.default_quantum_circuit)  # Set the default circuit and add it to the vector
 
+    def __del__(self):
+        self.session.close()
+        
     def set_quantum_circuit(self, circuit_func: Callable):
         """Set a new quantum circuit function and apply the QNode decorator."""
         self.quantum_circuit = qml.qnode(self.dev)(circuit_func)
@@ -80,6 +87,7 @@ class QuantumCodeManager:
                     eel.display_image(img_tk)  # Display the image in the GUI
             except ValueError as e:
                 print("Error processing image data: ", e)
+                logging.error(f"Error processing image data: {e}")  # Added logging
         else:
             print("Error generating image: ", response.status_code)
 
