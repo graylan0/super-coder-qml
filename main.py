@@ -113,11 +113,12 @@ class QuantumCodeManager:
                 }
             ) as response:
                 if response.status != 200:
-                    print(f"Failed to inject data: {await response.text()}")
+                    raise Exception(f"Failed to inject data: {await response.text()}")
                 else:
                     print(f"Successfully injected data with ID: {unique_id}")
         except Exception as e:
             print(f"Error injecting data into Weaviate: {e}")
+            raise e
 
 
     async def suggest_quantum_circuit_logic(self):
