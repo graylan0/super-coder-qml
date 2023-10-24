@@ -17,6 +17,38 @@ def normalize(value, min_value, max_value):
 
 class QuantumCodeManager:
     def __init__(self):
+        self.circuit_vector = []  # Initialize an empty list to store circuits
+
+        # Load settings from config.json
+        with open("config.json", "r") as f:
+            config = json.load(f)
+            self.openai_api_key = config["openai_api_key"]
+            weaviate_client_url = config.get("weaviate_client_url", "http://localhost:8080")
+
+        self.session = aiohttp.ClientSession()  # Create an aiohttp session      
+
+        # Initialize OpenAI API key
+        openai.api_key = self.openai_api_key  # Consider using OpenAI's official method if available
+
+        self.client = Client(weaviate_client_url)
+        self.dev = qml.device("default.qubit", wires=2)  # Define self.dev here
+
+        # Now it's safe to call this
+        self.set_quantum_circuit(self.default_quantum_circuit)  # Set the default circuit and add it to the vector
+
+    def set_quantum_circuit(self, circuit_func: Callable):
+        """Set a new quantum circuit function and apply the QNode decorator."""
+        self.quantum_circuit = qml.qnode(self.dev)(circuit_func)
+        self.circuit_vector.append(circuit_func)  # Append the new circuit to the vector
+
+    def default_quantum_circuit(self, param1, param2):
+        """Default quantum circuit definition."""
+        qml.RX(param1, wires=0)
+        qml.RY(param2, wires=1)
+        qml.RZ(param1 + param2, wires=0)
+        qml.CNOT(wires=[0, 1])
+        return [qml.expval(qml.PauliZ(i)) for i in range(2)]
+
 
     @eel.expose
     async def inject_data_into_weaviate(self, data: str):
@@ -45,41 +77,6 @@ class QuantumCodeManager:
         except Exception as e:
             print(f"Error injecting data into Weaviate: {e}")
 
-        self.circuit_vector = []  # Initialize an empty list to store circuits
-        self.set_quantum_circuit(self.default_quantum_circuit)  # Set the default circuit and add it to the vector
-
-        # Load settings from config.json
-        with open("config.json", "r") as f:
-            config = json.load(f)
-            self.openai_api_key = config["openai_api_key"]
-            weaviate_client_url = config.get("weaviate_client_url", "http://localhost:8080")
-
-        self.session = aiohttp.ClientSession()  # Create an aiohttp session      
-
-        # Initialize OpenAI API key
-        openai.api_key = self.openai_api_key  # Consider using OpenAI's official method if available
-
-        self.client = Client(weaviate_client_url)
-        self.dev = qml.device("default.qubit", wires=2)
-
-        # Apply the decorator here
-        self.quantum_circuit = qml.qnode(self.dev)(self.quantum_circuit)
-
-        # Initialize with a default quantum circuit
-        self.set_quantum_circuit(self.default_quantum_circuit)
-
-    def set_quantum_circuit(self, circuit_func: Callable):
-        """Set a new quantum circuit function and apply the QNode decorator."""
-        self.quantum_circuit = qml.qnode(self.dev)(circuit_func)
-        self.circuit_vector.append(circuit_func)  # Append the new circuit to the vector
-
-    def default_quantum_circuit(self, param1, param2):
-        """Default quantum circuit definition."""
-        qml.RX(param1, wires=0)
-        qml.RY(param2, wires=1)
-        qml.RZ(param1 + param2, wires=0)
-        qml.CNOT(wires=[0, 1])
-        return [qml.expval(qml.PauliZ(i)) for i in range(2)]
 
     async def suggest_quantum_circuit_logic(self):
         """Use GPT-4 to suggest better logic for the quantum circuit."""
