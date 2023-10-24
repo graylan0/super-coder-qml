@@ -5,6 +5,7 @@
 
 Demo Image :  ![image](https://github.com/graylan0/super-coder-qml/assets/34530588/a944896b-0b50-48a4-b18a-0fa154669add)
 
+![image](https://github.com/graylan0/super-coder-qml/assets/34530588/5a2227bf-d257-4fd4-9036-7968df4d4538)
 
 An application that leverages quantum computing and machine learning to manage code snippets. It uses the PennyLane library to generate unique Quantum IDs for different code contexts and stores them in a Weaviate database. The application also utilizes GPT-4 to identify and fill code placeholders. It offers a Matrix-themed web interface via the Eel library, allowing users to interact with the application seamlessly. This project aims to provide a futuristic approach to code management and generation.
 
