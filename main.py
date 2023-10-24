@@ -8,6 +8,7 @@ import hashlib
 import traceback
 import json
 from typing import Callable
+from weaviate.util import generate_uuid5 
 from weaviate import Client
 
 def normalize(value, min_value, max_value):
@@ -30,7 +31,6 @@ class QuantumCodeManager:
 
         # Apply the decorator here
         self.quantum_circuit = qml.qnode(self.dev)(self.quantum_circuit)
-
 
         # Initialize with a default quantum circuit
         self.set_quantum_circuit(self.default_quantum_circuit)
@@ -133,7 +133,7 @@ class QuantumCodeManager:
             "quantumID": str(quantum_id)
         }
         await self.store_data_in_weaviate("BugData", bug_data)
-        
+
     @eel.expose
     async def test_and_fix_code(self, code_str):
         # Step 1: Execute and test the code
@@ -152,9 +152,6 @@ class QuantumCodeManager:
             return f"Bug found and logged. Suggested fix:\n{suggested_fix}"
         else:
             return "No bugs found"
-
-
-
 
     def generate_quantum_id(self, context):
         """
@@ -183,7 +180,22 @@ class QuantumCodeManager:
 
     def store_data_in_weaviate(self, class_name, data):
         try:
-            unique_id = str(uuid.uuid4())
+            # Generate a deterministic UUID based on the data
+            unique_id = generate_uuid5(data)
+            
+            # Validate the data object before creation
+            validation_result = self.client.data_object.validate(
+                data_object=data,
+                class_name=class_name,
+                uuid=unique_id
+            )
+            
+            # Check if the validation was successful
+            if 'error' in validation_result:
+                print(f"Validation failed: {validation_result['error']}")
+                return
+            
+            # Create the data object in Weaviate
             self.client.data_object.create(
                 className=class_name,
                 dataObject={
@@ -233,7 +245,6 @@ class QuantumCodeManager:
         }
         self.store_data_in_weaviate("BugData", bug_data)
 
-
     async def generate_code_with_gpt4(self, context):
         rules = (
             "Rules and Guidelines for Code Generation:\n"
@@ -255,7 +266,6 @@ class QuantumCodeManager:
             messages=[{"role": "system", "content": rules}]
         )
         return response['choices'][0]['message']['content']
-
 
     @eel.expose
     async def identify_placeholders(self, code_str):
