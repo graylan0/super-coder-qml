@@ -63,6 +63,11 @@
             background-color: #2a2a2a;
             border: 2px solid #555;
         }
+
+        /* Added: Style for the image container */
+        #imageDiv {
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -81,6 +86,11 @@
 
         <button onclick="identifyPlaceholders()"><i class="fas fa-search"></i>Identify Placeholders</button>
         <button onclick="fillPlaceholders()"><i class="fas fa-pen"></i>Fill Placeholders</button>
+
+        <!-- Added: Div to display the image -->
+        <div id="imageDiv">
+            <!-- Images will be displayed here -->
+        </div>
     </div>
 
     <script>
@@ -96,6 +106,19 @@
             let code = document.getElementById("codeInput").value;
             let filledCode = await eel.fill_placeholders(code)();
             document.getElementById("codeInput").value = filledCode;
+        }
+
+        // Added: JavaScript function to display the image
+        eel.expose(show_image_in_html);
+        function show_image_in_html(img_str) {
+            // Create an image element
+            var img = document.createElement('img');
+            
+            // Set the image source to the base64 string
+            img.src = 'data:image/png;base64,' + img_str;
+            
+            // Append the image to the div
+            document.getElementById('imageDiv').appendChild(img);
         }
     </script>
 
