@@ -1,5 +1,6 @@
 import eel
 import openai
+import threading
 import numpy as np
 import pennylane as qml
 import asyncio
@@ -319,13 +320,33 @@ class QuantumCodeManager:
         
         return '\n'.join(lines)
 
-# Initialize Eel and QuantumCodeManager
-eel.init('web')
-manager = QuantumCodeManager()
+def run_asyncio_tasks(manager):
+    loop = asyncio.get_event_loop()
+    while True:
+        loop.run_until_complete(asyncio.sleep(1))
 
-# Suggest better quantum circuit logic using GPT-4
-suggested_logic = asyncio.run(manager.suggest_quantum_circuit_logic())
-print(f"Suggested Quantum Circuit Logic:\n{suggested_logic}")
+def start_eel():
+    eel.init('web')
+    manager = QuantumCodeManager()
 
-# Start Eel
-eel.start('index.html')
+    # Create a new event loop for this thread
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
+    # Suggest better quantum circuit logic using GPT-4
+    suggested_logic = loop.run_until_complete(manager.suggest_quantum_circuit_logic())
+    print(f"Suggested Quantum Circuit Logic:\n{suggested_logic}")
+
+    eel.start('index.html', block=False)
+    return manager  # Return the manager object
+
+if __name__ == "__main__":
+    # Start Eel in a separate thread
+    eel_thread = threading.Thread(target=start_eel)
+    eel_thread.start()
+
+    # Get the manager object from start_eel
+    manager = start_eel()
+
+    # Run asyncio event loop in the main thread
+    run_asyncio_tasks(manager)
