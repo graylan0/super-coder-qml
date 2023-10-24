@@ -15,14 +15,66 @@ class QuantumCodeManager:
             self.openai_api_key = config["openai_api_key"]
             weaviate_client_url = config.get("weaviate_client_url", "http://localhost:8080")
 
-        openai.api_key = self.openai_api_key
+        # Initialize OpenAI API key
+        openai.api_key = self.openai_api_key  # Consider using OpenAI's official method if available
+
         self.client = Client(weaviate_client_url)
         self.dev = qml.device("default.qubit", wires=2)
 
         # Apply the decorator here
         self.quantum_circuit = qml.qnode(self.dev)(self.quantum_circuit)
+    async def should_entangle(self, line):
+        """Use LLM to decide if this line should be entangled with another line."""
+        prompt = f"Should the following line of code be entangled with another line? If yes, provide the Quantum ID or context that it should be entangled with.\nLine: {line}"
+        entanglement_decision = await self.generate_code_with_gpt4(prompt)
+        
+        # Parse the LLM's response to decide
+        if "Yes" in entanglement_decision:
+            # Extract the context or Quantum ID mentioned by the LLM
+            entanglement_context = entanglement_decision.split("Yes, ")[1].strip()
+            
+            # Generate a Quantum ID based on this context
+            entangled_id = self.generate_quantum_id(entanglement_context)
+            
+            # Store the entanglement decision in Weaviate
+            self.store_data_in_weaviate("EntanglementData", {"line": line, "entangledID": str(entangled_id)})
+            
+            return entangled_id
+        else:
+            return None
 
+    async def entangle_and_optimize_lines(self, code_str):
+        """Entangle and optimize lines of code."""
+        lines = code_str.split('\n')
+        entangled_lines = {}  # To store lines that are entangled
+
+        optimized_lines = []
+        for i, line in enumerate(lines):
+            # Skip empty lines
+            if not line.strip():
+                continue
+
+            # Generate Quantum ID for each line
+            quantum_id = self.generate_quantum_id(line)
+
+            # Check if this line should be entangled with another
+            entangled_id = await self.should_entangle(line)
+            if entangled_id:
+                entangled_lines[quantum_id] = entangled_id
+
+            # Optimize the line using LLM
+            optimized_line = await self.optimize_code_with_llm(line)
+            optimized_lines.append(f"{optimized_line}  # Quantum ID: {quantum_id}")
+
+            # Store the optimized line in Weaviate
+            self.store_data_in_weaviate("OptimizedCode", {"line": optimized_line, "quantumID": str(quantum_id)})
+
+        # Store the entangled lines in Weaviate
+        self.store_data_in_weaviate("EntangledLines", {"entangledLines": json.dumps(entangled_lines)})
+
+        return '\n'.join(optimized_lines)
     def quantum_circuit(self, param1, param2):
+        # Quantum circuit definition
         qml.RX(param1, wires=0)
         qml.RY(param2, wires=1)
         qml.RZ(param1 + param2, wires=0)
@@ -114,7 +166,7 @@ class QuantumCodeManager:
         self.store_data_in_weaviate("BugData", bug_data)
 
 
-    async def generate_code_with_gpt4(context):
+    async def generate_code_with_gpt4(self, context):
         rules = (
             "Rules and Guidelines for Code Generation:\n"
             "1. The code must be Pythonic and follow PEP 8 guidelines.\n"
@@ -142,7 +194,7 @@ class QuantumCodeManager:
         return list((await self.identify_placeholders_with_gpt4(code_str)).values())
     
     @eel.expose
-    def set_openai_api_key(api_key):
+    def set_openai_api_key(self, api_key):
         openai.api_key = api_key
         # Save the API key to config.json
         with open("config.json", "r+") as f:
@@ -153,7 +205,7 @@ class QuantumCodeManager:
             f.truncate()
 
     @eel.expose
-    def set_weaviate_client_url(client_url):
+    def set_weaviate_client_url(self, client_url):
         # Update the client URL in the Python class
         manager.client = Client(client_url)
     
@@ -195,3 +247,4 @@ manager = QuantumCodeManager()
 
 # Start Eel
 eel.start('index.html')
+
