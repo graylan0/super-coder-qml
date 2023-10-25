@@ -1,24 +1,31 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Quantum Code Manager</title>
-    <link rel="stylesheet" href="css/all.min.css">
+    <title>ModeZion Code</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/styles/default.min.css">
     <script type="text/javascript" src="eel.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/3.0.8/marked.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.3.1/highlight.min.js"></script>
     <style>
-        /* Tesla-Inspired Styling */
+        /* Advanced Visual Effects */
         body {
             font-family: 'Arial', sans-serif;
             background-color: #000;
             color: #fff;
+            margin: 0;
+            padding: 0;
+            transition: all 0.3s ease;
         }
 
-        .container {
+        .container, .chat-container {
             max-width: 900px;
             margin: auto;
             background: #1a1a1a;
             padding: 20px;
             border-radius: 8px;
-            box-shadow: 0 0 10px rgba(255, 255, 255, 0.1);
+            box-shadow: 0 0 20px rgba(255, 255, 255, 0.3);
+            margin-bottom: 20px;
         }
 
         .menu {
@@ -55,45 +62,55 @@
             font-size: 18px;
         }
 
-        button i {
-            margin-right: 8px;
-        }
-
-        #directiveBox {
+        #modelOutput {
             background-color: #2a2a2a;
             border: 2px solid #555;
-        }
-
-        /* Added: Style for the image container */
-        #imageDiv {
-            margin-top: 20px;
+            padding: 20px;
+            border-radius: 8px;
+            overflow: auto;
         }
     </style>
 </head>
-<body>
+<body onload="resizeWindow()">
 
     <div class="menu">
         <a href="index.html">Home</a>
-        <a href="settings.html">Settings</a> 
+        <a href="settings.html">Settings</a>
     </div>
 
     <div class="container">
-        <h1>Quantum Code Manager</h1>
-
-        <textarea id="codeInput" placeholder="Enter your code with placeholders..."></textarea>
-
-        <input type="text" id="directiveBox" placeholder="Enter Directive...">
-
+        <h1>ModeZion Code</h1>
+        <textarea id="codeInput" placeholder="Enter your code with placeholders or needing improvement..."></textarea>
+        <input type="text" id="directiveBox" placeholder="Enter Directive or goal for your needs here...">
         <button onclick="identifyPlaceholders()"><i class="fas fa-search"></i>Identify Placeholders</button>
         <button onclick="fillPlaceholders()"><i class="fas fa-pen"></i>Fill Placeholders</button>
+        <div id="modelOutput">
+            <!-- Markdown and highlighted code will be displayed here -->
+        </div>
+    </div>
 
-        <!-- Added: Div to display the image -->
-        <div id="imageDiv">
-            <!-- Images will be displayed here -->
+    <div class="chat-container">
+        <h1>Chat Box</h1>
+        <div id="chat-box">
+            <!-- Chat messages will be displayed here -->
         </div>
     </div>
 
     <script>
+        // Function to resize the browser window
+        function resizeWindow() {
+            window.resizeTo(1280, 720);
+        }
+
+        // Function to render Markdown and highlight code
+        function renderMarkdownAndHighlightCode(markdownText) {
+            const html = marked(markdownText);
+            document.getElementById("modelOutput").innerHTML = html;
+            document.querySelectorAll("pre code").forEach((block) => {
+                hljs.highlightBlock(block);
+            });
+        }
+
         // JavaScript function to identify placeholders
         async function identifyPlaceholders() {
             let code = document.getElementById("codeInput").value;
@@ -108,20 +125,26 @@
             document.getElementById("codeInput").value = filledCode;
         }
 
-        // Added: JavaScript function to display the image
-        eel.expose(show_image_in_html);
-        function show_image_in_html(img_str) {
-            // Create an image element
-            var img = document.createElement('img');
-            
-            // Set the image source to the base64 string
-            img.src = 'data:image/png;base64,' + img_str;
-            
-            // Append the image to the div
-            document.getElementById('imageDiv').appendChild(img);
+        // Function to update the chat box
+        function updateChatBox(messages) {
+            const chatBox = document.getElementById("chat-box");
+            chatBox.innerHTML = "";
+            for (const message of messages) {
+                const messageDiv = document.createElement("div");
+                messageDiv.textContent = message;
+                chatBox.appendChild(messageDiv);
+            }
         }
+
+        // Fetch chat messages from Python and update the chat box
+        async function fetchChatMessages() {
+            const messages = await eel.fetch_chat_messages()();
+            updateChatBox(messages);
+        }
+
+        // Fetch chat messages every 5 seconds
+        setInterval(fetchChatMessages, 5000);
     </script>
 
 </body>
 </html>
-
