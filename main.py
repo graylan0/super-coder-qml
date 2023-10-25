@@ -1,104 +1,15 @@
-import json
-import asyncio
-import logging
-import aiosqlite  
-from concurrent.futures import ThreadPoolExecutor
-from twitchio.ext import commands
-from llama_cpp import Llama  # Assuming you have this package installed
-import textwrap  # Add this line to import the textwrap module
 import eel
-from html import escape  # Import the escape function for sanitization
 import openai
-import aiohttp
 import numpy as np
 import pennylane as qml
+import asyncio
 import hashlib
 import traceback
+import json
 from typing import Callable
 from types import FunctionType
 from weaviate.util import generate_uuid5
 from weaviate import Client
-
-# Initialize logging
-logging.basicConfig(level=logging.INFO)
-
-# Initialize twitch_token and initial_channels with default values
-twitch_token = None
-initial_channels = ["freedomdao"]
-
-# Load configuration from config.json
-try:
-    with open("config.json", "r") as f:
-        config = json.load(f)
-    twitch_token = config.get("TWITCH_TOKEN")
-    initial_channels = config.get("INITIAL_CHANNELS", ["freedomdao"])
-except Exception as e:
-    logging.error(f"Failed to load config.json: {e}")
-
-# Initialize Llama model
-llm = Llama(
-  model_path="llama-2-7b-chat.ggmlv3.q8_0.bin",
-  n_gpu_layers=-1,
-  n_ctx=3900,
-)
-
-executor = ThreadPoolExecutor(max_workers=3)
-
-async def run_llm(prompt):
-    return await asyncio.get_event_loop().run_in_executor(executor, lambda: llm(prompt, max_tokens=900)['choices'][0]['text'])
-
-# New function for GPT-4 (Added)
-async def run_gpt4(prompt):
-    return await asyncio.get_event_loop().run_in_executor(executor, lambda: openai.ChatCompletion.create(
-        model='gpt-4',
-        messages=[{"role": "user", "content": prompt}]
-    )['choices'][0]['message']['content'])
-
-
-# TwitchBot class definition
-class TwitchBot(commands.Bot):
-    def __init__(self):
-        super().__init__(token=twitch_token, prefix="!", initial_channels=initial_channels)
-
-    async def event_message(self, message):
-        await self.handle_commands(message)
-        await self.send_message_to_gui(message)  # Add this line to send messages to the GUI
-        await self.save_chat_message_to_db(message.content)  # Save chat message to DB
-
-    async def save_chat_message_to_db(self, message):
-        async with aiosqlite.connect("chat_messages.db") as db:
-            await db.execute("CREATE TABLE IF NOT EXISTS chat_messages (message TEXT)")
-            await db.execute("INSERT INTO chat_messages (message) VALUES (?)", (message,))
-            await db.commit()
-
-    async def get_all_chat_messages_from_db(self):
-        async with aiosqlite.connect("chat_messages.db") as db:
-            cursor = await db.execute("SELECT message FROM chat_messages")
-            return [row[0] for row in await cursor.fetchall()]
-
-    async def event_ready(self):
-        print(f'Logged in as | {self.nick}')
-
-    async def event_message(self, message):
-        await self.handle_commands(message)
-        await self.send_message_to_gui(message)  # Add this line to send messages to the GUI
-
-    @commands.command(name="llama")
-    async def llama_command(self, ctx):
-        prompt = ctx.message.content.replace("!llama ", "")
-        reply = await run_llm(prompt)
-
-        # Split the reply into chunks of 500 characters
-        chunks = textwrap.wrap(reply, 500)
-
-        # Send each chunk as a separate message
-        for chunk in chunks:
-            await ctx.send(chunk)
-
-    async def send_message_to_gui(self, message):
-        """Send sanitized Twitch chat messages to the Eel GUI."""
-        sanitized_message = escape(message.content)  # Sanitize the message
-        eel.receive_twitch_message(sanitized_message)  # Assuming you have a receive_twitch_message function in your Eel JavaScript
 
 def normalize(value, min_value, max_value):
     """Normalize a value to a given range."""
@@ -122,9 +33,6 @@ class QuantumCodeManager:
         # Initialize Weaviate client
         self.client = Client(weaviate_client_url)
 
-        # Initialize aiohttp session
-        self.session = aiohttp.ClientSession()
-
         # Initialize OpenAI API key
         if self.openai_api_key:
             openai.api_key = self.openai_api_key  # Consider using OpenAI's official method if available
@@ -137,34 +45,6 @@ class QuantumCodeManager:
 
     def __del__(self):
         self.session.close()
-
-        # Initialize SQLite database
-        self.db_path = "prompts.db"
-        loop = asyncio.get_event_loop()
-        loop.run_until_complete(self.init_db())
-        
-    async def init_db(self):
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute("CREATE TABLE IF NOT EXISTS prompts (prompt TEXT)")
-            await db.commit()
-
-    async def save_prompt_to_db(self, prompt):
-        async with aiosqlite.connect(self.db_path) as db:
-            await db.execute("INSERT INTO prompts (prompt) VALUES (?)", (prompt,))
-            await db.commit()
-
-    async def get_all_prompts_from_db(self):
-        async with aiosqlite.connect(self.db_path) as db:
-            cursor = await db.execute("SELECT prompt FROM prompts")
-            return [row[0] for row in await cursor.fetchall()]
-
-    async def fetch_data_from_db(self):
-        data_list = []
-        async with aiosqlite.connect("prompts.db") as db:
-            cursor = await db.execute("SELECT * FROM your_table")
-            async for row in cursor:
-                data_list.append(row)
-        return data_list
 
     def set_quantum_circuit(self, new_circuit_logic: Callable):
         """
@@ -179,7 +59,6 @@ class QuantumCodeManager:
         else:
             print("Error: Provided logic is not callable.")
 
-
     def default_quantum_circuit(self, param1, param2):
         """Default quantum circuit definition."""
         qml.RX(param1, wires=0)
@@ -190,12 +69,12 @@ class QuantumCodeManager:
 
 
     @eel.expose
-    async def inject_data_into_weaviate(self, prompt: str, timestamp: str, user_reply: str):
+    async def inject_data_into_weaviate(self, data: str):
         """
         Inject data into the Weaviate database.
         """
         # Generate a unique identifier for the data
-        unique_id = generate_uuid5(prompt)
+        unique_id = generate_uuid5(data)
 
         # Create the data object in Weaviate
         try:
@@ -205,9 +84,7 @@ class QuantumCodeManager:
                     "class": "InjectedData",
                     "id": unique_id,
                     "properties": {
-                        "prompt": prompt,
-                        "timestamp": timestamp,
-                        "user_reply": user_reply
+                        "data": data
                     }
                 }
             ) as response:
@@ -219,38 +96,40 @@ class QuantumCodeManager:
             print(f"Error injecting data into Weaviate: {e}")
             raise e
 
+
     async def suggest_quantum_circuit_logic(self):
         """Use GPT-4 to suggest better logic for the quantum circuit."""
         # Get the last circuit in the vector for reference
-        last_circuit = self.circuit_vector[-1] if self.circuit_vector else None
-        prompt = f"Suggest a better logic for a quantum circuit aimed at solving optimization problems. The circuit must follow the Pennylane library. The last circuit used was: {last_circuit}"
-    
-        suggested_logic = await self.generate_code_with_gpt4(prompt)
-    
-        if not suggested_logic:
-            print("Error: GPT-4 did not return any suggested logic.")
-            return None
+        last_circuit = self.circuit_vector[-1].__name__ if self.circuit_vector else "None"
+        print(f"Last circuit logic: {last_circuit}")  # Debugging statement
 
-        # Try to convert the string to a callable function
-        try:
-            exec_globals = {}
-            exec_locals = {}
-            exec(f"{suggested_logic.strip()}", exec_globals, exec_locals)
-        
-            # Find the first callable in the local namespace and set it as the new circuit
-            for name, obj in exec_locals.items():
-                if isinstance(obj, FunctionType):
-                    self.set_quantum_circuit(obj)
-                    break
-            else:
-                print("Error: No callable function found in the suggested logic.")
+        # First, ask GPT-4 if a new circuit is needed
+        prompt_for_decision = f"Do we need a new quantum circuit for solving optimization problems? The last circuit used was: {last_circuit}"
+        decision = await self.generate_code_with_gpt4(prompt_for_decision)
+
+        if "Yes" in decision:
+            # Proceed to generate a new circuit
+            prompt_for_logic = f"Suggest a better logic for a quantum circuit aimed at solving optimization problems. The circuit must follow the Pennylane library. The last circuit used was: {last_circuit}"
+            suggested_logic = await self.generate_code_with_gpt4(prompt_for_logic)
+
+            # Strip the triple backticks if they exist
+            if suggested_logic.startswith("```") and suggested_logic.endswith("```"):
+                suggested_logic = suggested_logic[3:-3]
+
+            if not suggested_logic:
+                print("Error: GPT-4 did not return any suggested logic.")
                 return None
 
-        except Exception as e:
-            print(f"Error: Could not convert the suggested logic to a callable function. Exception: {e}")
+            return suggested_logic.strip()
+
+        elif "No" in decision:
+            print("GPT-4 suggests that a new circuit is not needed.")
             return None
-    
-        return suggested_logic.strip()
+
+        else:
+            print("GPT-4 did not provide a clear answer on whether a new circuit is needed.")
+            return None
+
 
     async def optimize_code_with_llm(self, line):
         """Optimize a line of code using LLM (Language Model)."""
@@ -429,11 +308,6 @@ class QuantumCodeManager:
         identified_placeholders = response['choices'][0]['message']['content'].split('\n')
         lines = code_str.split('\n')
         return {ph: i for i, line in enumerate(lines) for ph in identified_placeholders if ph in line}
-    # New function to run both models (Added)
-    async def run_both_models(prompt):
-        gpt4_output = await run_gpt4(prompt)
-        llama_output = await run_llm(prompt)
-        return gpt4_output + "\n" + llama_output
 
     async def generate_code_with_gpt4(self, context):
         rules = (
@@ -508,58 +382,11 @@ class QuantumCodeManager:
             self.store_data_in_weaviate("CodeSnippet", {"code": new_code, "quantumID": str(quantum_id)})
         
         return '\n'.join(lines)
-    
-# New function to retrieve all chat messages from SQLite database
-async def get_all_chat_messages_from_db():
-    async with aiosqlite.connect("chat_messages.db") as db:
-        cursor = await db.execute("SELECT message FROM chat")
-        return [row[0] for row in await cursor.fetchall()]
-    
-# Expose the function to Eel
-@eel.expose
-async def fetch_chat_messages():
-    return await get_all_chat_messages_from_db()
 
-async def execute_tasks(manager, tasks):
-    """Execute a list of tasks concurrently and return their results."""
-    return await asyncio.gather(*tasks)
-
-async def send_prompts_to_twitch(bot, prompts):
-    """Send replies for a list of prompts to Twitch."""
-    for prompt in prompts:
-        reply = await run_llm(prompt)
-        await bot.send_message("freedomdao", f"Reply for {prompt}: {reply}")
-        # Save the prompt to the database
-        await manager.save_prompt_to_db(prompt)
-
-async def run_asyncio_tasks(manager, bot):
+def run_asyncio_tasks(manager):
+    loop = asyncio.get_event_loop()
     while True:
-        # Fetch data from the database
-        data_list = await manager.fetch_data_from_db()
-        
-        # Create a list of tasks for data injection into Weaviate
-        weaviate_tasks = [manager.inject_data_into_weaviate(data['prompt'], data['timestamp'], data['user_reply']) for data in data_list]
-        
-        # Execute tasks and wait for their completion
-        weaviate_results = await asyncio.gather(*weaviate_tasks)
-        
-        # Notify on Twitch when all tasks for Weaviate are completed
-        await bot.send_message("freedomdao", "All tasks for Weaviate have been completed.")
-        
-        # Get all prompts from the database
-        prompts = await manager.get_all_prompts_from_db()
-        
-        # Create a list of tasks for sending prompts to Twitch
-        twitch_tasks = [send_prompts_to_twitch(bot, prompt) for prompt in prompts]
-        
-        # Execute tasks and wait for their completion
-        twitch_results = await asyncio.gather(*twitch_tasks)
-
-        # Log or handle the results
-        print(f"Twitch tasks results: {twitch_results}")
-
-        # Notify on Twitch when all tasks for sending prompts are completed
-        await bot.send_message("freedomdao", "All tasks for sending prompts to Twitch have been completed.")
+        loop.run_until_complete(asyncio.sleep(1))
 
 def start_eel():
     eel.init('web')
@@ -570,25 +397,12 @@ def start_eel():
     suggested_logic = loop.run_until_complete(manager.suggest_quantum_circuit_logic())
     print(f"Suggested Quantum Circuit Logic:\n{suggested_logic}")
 
-    eel.start('index.html', block=True)
+    eel.start('index.html', size=(720, 1280))
     return manager  # Return the manager object
 
-# Main function
 if __name__ == "__main__":
-    import nest_asyncio
-    nest_asyncio.apply()
+    # Start Eel and get the manager object
+    manager = start_eel()
 
-    # Initialize Twitch bot
-    bot = TwitchBot()
-    loop = asyncio.get_event_loop()
-    loop.run_until_complete(bot.run())
-
-    # Initialize Eel and QuantumCodeManager
-    eel.init('web')
-    manager = QuantumCodeManager()
-
-    # Start the asyncio tasks
-    loop.run_until_complete(run_asyncio_tasks(manager, bot))
-
-    # Start Eel
-    eel.start('index.html', block=True)
+    # Run asyncio event loop in the main thread
+    run_asyncio_tasks(manager)
