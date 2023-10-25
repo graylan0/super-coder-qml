@@ -7,6 +7,7 @@ from twitchio.ext import commands
 from llama_cpp import Llama  # Assuming you have this package installed
 import textwrap  # Add this line to import the textwrap module
 import eel
+from html import escape  # Import the escape function for sanitization
 import openai
 import aiohttp
 import numpy as np
@@ -59,11 +60,28 @@ class TwitchBot(commands.Bot):
     def __init__(self):
         super().__init__(token=twitch_token, prefix="!", initial_channels=initial_channels)
 
+    async def event_message(self, message):
+        await self.handle_commands(message)
+        await self.send_message_to_gui(message)  # Add this line to send messages to the GUI
+        await self.save_chat_message_to_db(message.content)  # Save chat message to DB
+
+    async def save_chat_message_to_db(self, message):
+        async with aiosqlite.connect("chat_messages.db") as db:
+            await db.execute("CREATE TABLE IF NOT EXISTS chat_messages (message TEXT)")
+            await db.execute("INSERT INTO chat_messages (message) VALUES (?)", (message,))
+            await db.commit()
+
+    async def get_all_chat_messages_from_db(self):
+        async with aiosqlite.connect("chat_messages.db") as db:
+            cursor = await db.execute("SELECT message FROM chat_messages")
+            return [row[0] for row in await cursor.fetchall()]
+
     async def event_ready(self):
         print(f'Logged in as | {self.nick}')
 
     async def event_message(self, message):
         await self.handle_commands(message)
+        await self.send_message_to_gui(message)  # Add this line to send messages to the GUI
 
     @commands.command(name="llama")
     async def llama_command(self, ctx):
@@ -76,6 +94,11 @@ class TwitchBot(commands.Bot):
         # Send each chunk as a separate message
         for chunk in chunks:
             await ctx.send(chunk)
+
+    async def send_message_to_gui(self, message):
+        """Send sanitized Twitch chat messages to the Eel GUI."""
+        sanitized_message = escape(message.content)  # Sanitize the message
+        eel.receive_twitch_message(sanitized_message)  # Assuming you have a receive_twitch_message function in your Eel JavaScript
 
 def normalize(value, min_value, max_value):
     """Normalize a value to a given range."""
@@ -485,6 +508,17 @@ class QuantumCodeManager:
             self.store_data_in_weaviate("CodeSnippet", {"code": new_code, "quantumID": str(quantum_id)})
         
         return '\n'.join(lines)
+    
+# New function to retrieve all chat messages from SQLite database
+async def get_all_chat_messages_from_db():
+    async with aiosqlite.connect("chat_messages.db") as db:
+        cursor = await db.execute("SELECT message FROM chat")
+        return [row[0] for row in await cursor.fetchall()]
+    
+# Expose the function to Eel
+@eel.expose
+async def fetch_chat_messages():
+    return await get_all_chat_messages_from_db()
 
 async def execute_tasks(manager, tasks):
     """Execute a list of tasks concurrently and return their results."""
