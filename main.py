@@ -1,40 +1,88 @@
+import json
+import asyncio
+import logging
+import aiosqlite  
+from concurrent.futures import ThreadPoolExecutor
+from twitchio.ext import commands
+from llama_cpp import Llama  # Assuming you have this package installed
+import textwrap  # Add this line to import the textwrap module
 import eel
 import openai
 import aiohttp
 import numpy as np
 import pennylane as qml
-import asyncio
 import hashlib
 import traceback
-import json
 from typing import Callable
 from types import FunctionType
 from weaviate.util import generate_uuid5
 from weaviate import Client
-from transformers import pipeline
-import requests
-from PIL import Image, ImageTk
-import io
-import base64
-import random
-import logging
-import sys
+
+# Initialize logging
+logging.basicConfig(level=logging.INFO)
+
+# Initialize twitch_token and initial_channels with default values
+twitch_token = None
+initial_channels = ["freedomdao"]
+
+# Load configuration from config.json
+try:
+    with open("config.json", "r") as f:
+        config = json.load(f)
+    twitch_token = config.get("TWITCH_TOKEN")
+    initial_channels = config.get("INITIAL_CHANNELS", ["freedomdao"])
+except Exception as e:
+    logging.error(f"Failed to load config.json: {e}")
+
+# Initialize Llama model
+llm = Llama(
+  model_path="llama-2-7b-chat.ggmlv3.q8_0.bin",
+  n_gpu_layers=-1,
+  n_ctx=3900,
+)
+
+executor = ThreadPoolExecutor(max_workers=3)
+
+async def run_llm(prompt):
+    return await asyncio.get_event_loop().run_in_executor(executor, lambda: llm(prompt, max_tokens=900)['choices'][0]['text'])
+
+# New function for GPT-4 (Added)
+async def run_gpt4(prompt):
+    return await asyncio.get_event_loop().run_in_executor(executor, lambda: openai.ChatCompletion.create(
+        model='gpt-4',
+        messages=[{"role": "user", "content": prompt}]
+    )['choices'][0]['message']['content'])
+
+
+# TwitchBot class definition
+class TwitchBot(commands.Bot):
+    def __init__(self):
+        super().__init__(token=twitch_token, prefix="!", initial_channels=initial_channels)
+
+    async def event_ready(self):
+        print(f'Logged in as | {self.nick}')
+
+    async def event_message(self, message):
+        await self.handle_commands(message)
+
+    @commands.command(name="llama")
+    async def llama_command(self, ctx):
+        prompt = ctx.message.content.replace("!llama ", "")
+        reply = await run_llm(prompt)
+
+        # Split the reply into chunks of 500 characters
+        chunks = textwrap.wrap(reply, 500)
+
+        # Send each chunk as a separate message
+        for chunk in chunks:
+            await ctx.send(chunk)
 
 def normalize(value, min_value, max_value):
     """Normalize a value to a given range."""
     return min_value + (max_value - min_value) * (value / 0xFFFFFFFFFFFFFFFF)
 
-class AestheticEvaluator:
-    def __init__(self):
-        self.pipe = pipeline("image-classification", model="cafeai/cafe_aesthetic")
-
-    def evaluate_aesthetic(self, image_path):
-        result = self.pipe(image_path)
-        return result[0]['score']
-
 class QuantumCodeManager:
     def __init__(self):
-        self.aesthetic_evaluator = AestheticEvaluator()
         self.circuit_vector = []  # Initialize an empty list to store circuits
 
         # Load settings from config.json
@@ -67,6 +115,34 @@ class QuantumCodeManager:
     def __del__(self):
         self.session.close()
 
+        # Initialize SQLite database
+        self.db_path = "prompts.db"
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(self.init_db())
+        
+    async def init_db(self):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("CREATE TABLE IF NOT EXISTS prompts (prompt TEXT)")
+            await db.commit()
+
+    async def save_prompt_to_db(self, prompt):
+        async with aiosqlite.connect(self.db_path) as db:
+            await db.execute("INSERT INTO prompts (prompt) VALUES (?)", (prompt,))
+            await db.commit()
+
+    async def get_all_prompts_from_db(self):
+        async with aiosqlite.connect(self.db_path) as db:
+            cursor = await db.execute("SELECT prompt FROM prompts")
+            return [row[0] for row in await cursor.fetchall()]
+
+    async def fetch_data_from_db(self):
+        data_list = []
+        async with aiosqlite.connect("prompts.db") as db:
+            cursor = await db.execute("SELECT * FROM your_table")
+            async for row in cursor:
+                data_list.append(row)
+        return data_list
+
     def set_quantum_circuit(self, new_circuit_logic: Callable):
         """
         Sets the new quantum circuit logic.
@@ -80,32 +156,6 @@ class QuantumCodeManager:
         else:
             print("Error: Provided logic is not callable.")
 
-    def generate_images(self, message):
-        url = 'http://127.0.0.1:7860/sdapi/v1/txt2img'
-        payload = {
-            "prompt": message,
-            "steps": 50,
-            "seed": random.randrange(sys.maxsize),
-            "enable_hr": "false",
-            "denoising_strength": "0.7",
-            "cfg_scale": "7",
-            "width": 1280,
-            "height": 512,
-            "restore_faces": "true",
-        }
-        response = requests.post(url, json=payload)
-        if response.status_code == 200:
-            try:
-                r = response.json()
-                for i in r['images']:
-                    image = Image.open(io.BytesIO(base64.b64decode(i.split(",", 1)[0])))
-                    img_tk = ImageTk.PhotoImage(image)
-                    eel.display_image(img_tk)  # Display the image in the GUI
-            except ValueError as e:
-                print("Error processing image data: ", e)
-                logging.error(f"Error processing image data: {e}")  # Added logging
-        else:
-            print("Error generating image: ", response.status_code)
 
     def default_quantum_circuit(self, param1, param2):
         """Default quantum circuit definition."""
@@ -117,12 +167,12 @@ class QuantumCodeManager:
 
 
     @eel.expose
-    async def inject_data_into_weaviate(self, data: str):
+    async def inject_data_into_weaviate(self, prompt: str, timestamp: str, user_reply: str):
         """
         Inject data into the Weaviate database.
         """
         # Generate a unique identifier for the data
-        unique_id = generate_uuid5(data)
+        unique_id = generate_uuid5(prompt)
 
         # Create the data object in Weaviate
         try:
@@ -132,7 +182,9 @@ class QuantumCodeManager:
                     "class": "InjectedData",
                     "id": unique_id,
                     "properties": {
-                        "data": data
+                        "prompt": prompt,
+                        "timestamp": timestamp,
+                        "user_reply": user_reply
                     }
                 }
             ) as response:
@@ -143,7 +195,6 @@ class QuantumCodeManager:
         except Exception as e:
             print(f"Error injecting data into Weaviate: {e}")
             raise e
-
 
     async def suggest_quantum_circuit_logic(self):
         """Use GPT-4 to suggest better logic for the quantum circuit."""
@@ -355,6 +406,11 @@ class QuantumCodeManager:
         identified_placeholders = response['choices'][0]['message']['content'].split('\n')
         lines = code_str.split('\n')
         return {ph: i for i, line in enumerate(lines) for ph in identified_placeholders if ph in line}
+    # New function to run both models (Added)
+    async def run_both_models(prompt):
+        gpt4_output = await run_gpt4(prompt)
+        llama_output = await run_llm(prompt)
+        return gpt4_output + "\n" + llama_output
 
     async def generate_code_with_gpt4(self, context):
         rules = (
@@ -430,10 +486,46 @@ class QuantumCodeManager:
         
         return '\n'.join(lines)
 
-def run_asyncio_tasks(manager):
-    loop = asyncio.get_event_loop()
+async def execute_tasks(manager, tasks):
+    """Execute a list of tasks concurrently and return their results."""
+    return await asyncio.gather(*tasks)
+
+async def send_prompts_to_twitch(bot, prompts):
+    """Send replies for a list of prompts to Twitch."""
+    for prompt in prompts:
+        reply = await run_llm(prompt)
+        await bot.send_message("freedomdao", f"Reply for {prompt}: {reply}")
+        # Save the prompt to the database
+        await manager.save_prompt_to_db(prompt)
+
+async def run_asyncio_tasks(manager, bot):
     while True:
-        loop.run_until_complete(asyncio.sleep(1))
+        # Fetch data from the database
+        data_list = await manager.fetch_data_from_db()
+        
+        # Create a list of tasks for data injection into Weaviate
+        weaviate_tasks = [manager.inject_data_into_weaviate(data['prompt'], data['timestamp'], data['user_reply']) for data in data_list]
+        
+        # Execute tasks and wait for their completion
+        weaviate_results = await asyncio.gather(*weaviate_tasks)
+        
+        # Notify on Twitch when all tasks for Weaviate are completed
+        await bot.send_message("freedomdao", "All tasks for Weaviate have been completed.")
+        
+        # Get all prompts from the database
+        prompts = await manager.get_all_prompts_from_db()
+        
+        # Create a list of tasks for sending prompts to Twitch
+        twitch_tasks = [send_prompts_to_twitch(bot, prompt) for prompt in prompts]
+        
+        # Execute tasks and wait for their completion
+        twitch_results = await asyncio.gather(*twitch_tasks)
+
+        # Log or handle the results
+        print(f"Twitch tasks results: {twitch_results}")
+
+        # Notify on Twitch when all tasks for sending prompts are completed
+        await bot.send_message("freedomdao", "All tasks for sending prompts to Twitch have been completed.")
 
 def start_eel():
     eel.init('web')
@@ -447,9 +539,22 @@ def start_eel():
     eel.start('index.html', block=True)
     return manager  # Return the manager object
 
+# Main function
 if __name__ == "__main__":
-    # Start Eel and get the manager object
-    manager = start_eel()
+    import nest_asyncio
+    nest_asyncio.apply()
 
-    # Run asyncio event loop in the main thread
-    run_asyncio_tasks(manager)
+    # Initialize Twitch bot
+    bot = TwitchBot()
+    loop = asyncio.get_event_loop()
+    loop.run_until_complete(bot.run())
+
+    # Initialize Eel and QuantumCodeManager
+    eel.init('web')
+    manager = QuantumCodeManager()
+
+    # Start the asyncio tasks
+    loop.run_until_complete(run_asyncio_tasks(manager, bot))
+
+    # Start Eel
+    eel.start('index.html', block=True)
