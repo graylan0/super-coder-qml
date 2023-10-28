@@ -3,14 +3,51 @@ import openai
 import numpy as np
 import pennylane as qml
 import asyncio
+import time
 import hashlib
 import traceback
 import json
+import re
+import logging
+import uuid
+import pytesseract
+import sounddevice as sd
+import threading
 import aiohttp
-from typing import Callable
-from types import FunctionType
+import speech_recognition as sr
+from typing import Callable, Any
+from concurrent.futures import ThreadPoolExecutor
 from weaviate.util import generate_uuid5
+from transformers import pipeline
+from scipy.io.wavfile import write as write_wav
 from weaviate import Client
+from llama_cpp import Llama
+from bark import generate_audio, SAMPLE_RATE
+
+# Initialize ThreadPoolExecutor
+executor = ThreadPoolExecutor(max_workers=3)
+
+# Initialize variables for speech recognition
+is_listening = False
+recognizer = sr.Recognizer()
+mic = sr.Microphone()
+
+def audio_to_text(audio_data):
+    try:
+        text = recognizer.recognize_google(audio_data)
+        return text
+    except sr.UnknownValueError:
+        return "Could not understand audio"
+    except sr.RequestError as e:
+        return f"Could not request results; {e}"
+
+# Function to generate audio for each sentence and add pauses
+def generate_audio_for_sentence(sentence):
+    audio = generate_audio(sentence, history_prompt="v2/en_speaker_6")
+    silence = np.zeros(int(0.75 * SAMPLE_RATE))  # quarter second of silence
+    return np.concatenate([audio, silence])
+
+pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Update the path accordingly
 
 def normalize(value, min_value, max_value):
     """Normalize a value to a given range."""
@@ -19,9 +56,16 @@ def normalize(value, min_value, max_value):
 class QuantumCodeManager:
     def __init__(self):
         self.client = Client("http://localhost:8080")
+        self.pipe = pipeline("image-classification", model="cafeai/cafe_aesthetic")
         self.session = aiohttp.ClientSession()
         self.circuit_vector = []  # Initialize an empty list to store circuits
 
+        # Initialize Llama 2
+        self.llm = Llama(
+            model_path="llama-2-7b-chat.ggmlv3.q8_0.bin",
+            n_gpu_layers=-1,
+            n_ctx=3900,
+        )
         # Load settings from config.json
         try:
             with open("config.json", "r") as f:
@@ -48,6 +92,91 @@ class QuantumCodeManager:
 
     def __del__(self):
         self.session.close()
+
+    def evaluate_aesthetic(self, image_path):
+        result = self.pipe(image_path)
+        return result[0]['score']
+
+    def extract_key_topics(self, last_frame):
+        # For demonstration, let's assume the key topics are comments in the code
+        return [line.split("#")[1].strip() for line in last_frame.split("\n") if "#" in line]
+
+
+    # Function to generate and play audio for a message
+    def generate_and_play_audio(message):
+        sentences = re.split('(?<=[.!?]) +', message)
+        audio_arrays = []
+    
+        for sentence in sentences:
+            audio_arrays.append(generate_audio_for_sentence(sentence))
+        
+        audio = np.concatenate(audio_arrays)
+    
+        file_name = str(uuid.uuid4()) + ".wav"
+        write_wav(file_name, SAMPLE_RATE, audio)
+        sd.play(audio, samplerate=SAMPLE_RATE)
+        sd.wait()
+
+    # Function to start/stop speech recognition
+    @eel.expose
+    def set_speech_recognition_state(state):
+        global is_listening
+        is_listening = state
+
+    # Function to run continuous speech recognition
+    def continuous_speech_recognition():
+        global is_listening
+        with mic as source:
+            recognizer.adjust_for_ambient_noise(source)
+            while True:
+                if is_listening:
+                    try:
+                        audio_data = recognizer.listen(source, timeout=1)
+                        text = audio_to_text(audio_data)  # Convert audio to text
+                        if text not in ["Could not understand audio", ""]:
+                            asyncio.run(run_llm(text))
+                            eel.update_chat_box(f"User: {text}")
+                    except sr.WaitTimeoutError:
+                        continue
+                    except Exception as e:
+                        eel.update_chat_box(f"An error occurred: {e}")
+                else:
+                    time.sleep(1)
+
+        
+    # Start the continuous speech recognition in a separate thread
+    thread = threading.Thread(target=continuous_speech_recognition)
+    thread.daemon = True  # Set daemon to True
+    thread.start()
+
+    async def generate_with_llama2(self, last_frame, frame_num, frames):
+        # Extract key topics from the last frame
+        key_topics = self.extract_key_topics(last_frame)
+
+        # Create a rules-based prompt for Llama 2
+        llama_prompt = {
+            "task": "code_generation",
+            "last_frame": last_frame,
+            "key_topics": key_topics,
+            "requirements": [
+                "The code must follow PEP 8 guidelines",
+                "The code should be efficient and optimized for performance",
+                "Include necessary comments to explain complex or non-intuitive parts",
+                "Use appropriate data structures for the task at hand",
+                "Error handling should be robust, capturing and logging exceptions where necessary"
+            ]
+        }
+
+        # Generate code using Llama 2
+        llama_response = self.llm.generate(llama_prompt)  # Actual code to call Llama 2
+
+        # Extract the generated code from the Llama 2 response
+        generated_code = llama_response.get('generated_code', '')
+
+        # Add the generated code to the frames list
+        frames[frame_num] = generated_code
+
+        return generated_code
 
     def set_quantum_circuit(self, new_circuit_logic: Callable):
         """
@@ -214,11 +343,32 @@ class QuantumCodeManager:
         qml.CNOT(wires=[0, 1])
         return [qml.expval(qml.PauliZ(i)) for i in range(2)]
 
-    async def execute_and_test_code(self, code_str):
+    async def execute_and_test_code(self, code_str: str):
+        """
+        Execute and test the given Python code.
+
+        Args:
+            code_str (str): The Python code to execute.
+
+        Returns:
+            tuple: A tuple containing an error message and traceback if an error occurs, otherwise None.
+        """
         try:
-            exec(code_str)
+            # Execute the code
+            exec(code_str, {}, {})
+            logging.info("Code executed successfully.")
             return None  # No bugs
+        except SyntaxError as se:
+            logging.error(f"Syntax Error: {se}")
+            return str(se), traceback.format_exc()
+        except NameError as ne:
+            logging.error(f"Name Error: {ne}")
+            return str(ne), traceback.format_exc()
+        except TypeError as te:
+            logging.error(f"Type Error: {te}")
+            return str(te), traceback.format_exc()
         except Exception as e:
+            logging.error(f"An unexpected error occurred: {e}")
             return str(e), traceback.format_exc()
 
     async def log_bug_in_weaviate(self, error_message, traceback, code_context):
