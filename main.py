@@ -6,6 +6,7 @@ import asyncio
 import hashlib
 import traceback
 import json
+import aiohttp
 from typing import Callable
 from types import FunctionType
 from weaviate.util import generate_uuid5
@@ -17,6 +18,8 @@ def normalize(value, min_value, max_value):
 
 class QuantumCodeManager:
     def __init__(self):
+        self.client = Client("http://localhost:8080")
+        self.session = aiohttp.ClientSession()
         self.circuit_vector = []  # Initialize an empty list to store circuits
 
         # Load settings from config.json
@@ -68,33 +71,37 @@ class QuantumCodeManager:
         return [qml.expval(qml.PauliZ(i)) for i in range(2)]
 
 
-    @eel.expose
-    async def inject_data_into_weaviate(self, data: str):
-        """
-        Inject data into the Weaviate database.
-        """
-        # Generate a unique identifier for the data
+    async def store_data_in_weaviate(self, class_name: str, data: Any):
         unique_id = generate_uuid5(data)
+        async with self.session.post(
+            f"{self.client.url}/objects",
+            json={
+                "class": class_name,
+                "id": unique_id,
+                "properties": data
+            }
+        ) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                return {"error": "Failed to store data"}
 
-        # Create the data object in Weaviate
-        try:
-            async with self.session.post(
-                f"{self.client.url}/objects",
-                json={
-                    "class": "InjectedData",
-                    "id": unique_id,
-                    "properties": {
-                        "data": data
-                    }
+    async def inject_data_into_weaviate(self, data: str):
+        unique_id = generate_uuid5(data)
+        async with self.session.post(
+            f"{self.client.url}/objects",
+            json={
+                "class": "InjectedData",
+                "id": unique_id,
+                "properties": {
+                    "data": data
                 }
-            ) as response:
-                if response.status != 200:
-                    raise Exception(f"Failed to inject data: {await response.text()}")
-                else:
-                    print(f"Successfully injected data with ID: {unique_id}")
-        except Exception as e:
-            print(f"Error injecting data into Weaviate: {e}")
-            raise e
+            }
+        ) as response:
+            if response.status == 200:
+                return await response.json()
+            else:
+                return {"error": "Failed to inject data"}
 
 
     async def suggest_quantum_circuit_logic(self):
@@ -103,60 +110,71 @@ class QuantumCodeManager:
         last_circuit = self.circuit_vector[-1].__name__ if self.circuit_vector else "None"
         print(f"Last circuit logic: {last_circuit}")  # Debugging statement
 
-        # First, ask GPT-4 if a new circuit is needed
-        prompt_for_decision = f"Do we need a new quantum circuit for solving optimization problems? The last circuit used was: {last_circuit}"
-        decision = await self.generate_code_with_gpt4(prompt_for_decision)
+        rules = (
+            "Rules and Guidelines for Quantum Circuit Logic:\n"
+            "1. The logic must be compatible with the Pennylane library.\n"
+            "2. The logic should aim to solve optimization problems.\n"
+            "3. Include necessary comments to explain the circuit.\n"
+            "4. The logic should be efficient and optimized for performance.\n"
+        )
+        prompt_for_logic = f"The last circuit used was: {last_circuit}"
+        messages = [
+            {"role": "system", "content": rules},
+            {"role": "user", "content": prompt_for_logic}
+        ]
+        suggested_logic = await self.generate_code_with_gpt4(messages)
 
-        if "Yes" in decision:
-            # Proceed to generate a new circuit
-            prompt_for_logic = f"Suggest a better logic for a quantum circuit aimed at solving optimization problems. The circuit must follow the Pennylane library. The last circuit used was: {last_circuit}"
-            suggested_logic = await self.generate_code_with_gpt4(prompt_for_logic)
+        # Strip the triple backticks if they exist
+        if suggested_logic.startswith("```") and suggested_logic.endswith("```"):
+            suggested_logic = suggested_logic[3:-3]
 
-            # Strip the triple backticks if they exist
-            if suggested_logic.startswith("```") and suggested_logic.endswith("```"):
-                suggested_logic = suggested_logic[3:-3]
-
-            if not suggested_logic:
-                print("Error: GPT-4 did not return any suggested logic.")
-                return None
-
-            return suggested_logic.strip()
-
-        elif "No" in decision:
-            print("GPT-4 suggests that a new circuit is not needed.")
+        if not suggested_logic:
+            print("Error: GPT-4 did not return any suggested logic.")
             return None
 
-        else:
-            print("GPT-4 did not provide a clear answer on whether a new circuit is needed.")
-            return None
+        return suggested_logic.strip()
 
 
     async def optimize_code_with_llm(self, line):
-        """Optimize a line of code using LLM (Language Model)."""
+        rules = "Rules for Code Optimization:\n1. The code must be efficient.\n2. Follow Pythonic practices.\n"
         prompt = f"Optimize the following line of code:\n{line}"
-        optimized_line = await self.generate_code_with_gpt4(prompt)
+        messages = [
+            {"role": "system", "content": rules},
+            {"role": "user", "content": prompt}
+        ]
+        optimized_line = await self.generate_code_with_gpt4(messages)
         return optimized_line.strip()
     
     async def should_entangle(self, line):
         """Use LLM to decide if this line should be entangled with another line."""
-        prompt = f"Should the following line of code be entangled with another line? If yes, provide the Quantum ID or context that it should be entangled with.\nLine: {line}"
-        entanglement_decision = await self.generate_code_with_gpt4(prompt)
-    
+        rules = (
+            "Rules for Entanglement Decision:\n"
+            "1. The decision must be logical.\n"
+            "2. Provide context if entanglement is needed.\n"
+        )
+        messages = [
+            {"role": "system", "content": rules},
+            {"role": "user", "content": "Should the following line of code be entangled with another line?\n" + line}
+        ]
+        entanglement_decision = await self.generate_code_with_gpt4(messages)
+
         # Parse the LLM's response to decide
         if "decision" in entanglement_decision and entanglement_decision["decision"] == "Yes":
             # Check the confidence score
             if "confidence_score" in entanglement_decision and entanglement_decision["confidence_score"] > 0.8:
                 # Extract the context or Quantum ID mentioned by the LLM
                 entanglement_context = entanglement_decision["context"].strip()
-            
+        
                 # Generate a Quantum ID based on this context
                 entangled_id = self.generate_quantum_id(entanglement_context)
-            
+        
                 # Store the entanglement decision in Weaviate
                 self.store_data_in_weaviate("EntanglementData", {"line": line, "entangledID": str(entangled_id), "confidence_score": entanglement_decision["confidence_score"]})
-            
+        
                 return entangled_id
+
         return None
+
 
     async def entangle_and_optimize_lines(self, code_str):
         """Entangle and optimize lines of code."""
@@ -215,21 +233,31 @@ class QuantumCodeManager:
     @eel.expose
     async def test_and_fix_code(self, code_str):
         # Step 1: Execute and test the code
-        error_message, traceback_str = self.execute_and_test_code(code_str)
-        
+        error_message, traceback_str = await self.execute_and_test_code(code_str)
+    
         if error_message:
             # Log the bug in Weaviate
-            self.log_bug_in_weaviate(error_message, traceback_str, code_str)
-            
+            await self.log_bug_in_weaviate(error_message, traceback_str, code_str)
+        
             # Step 2: Use GPT-4 to suggest a fix
-            suggested_fix = await self.generate_code_with_gpt4(f"Fix the following bug:\n{error_message}\n\nIn the code:\n{code_str}")
-            
+            rules = (
+                "Rules for Code Fixing:\n"
+                "1. The fix must resolve the bug.\n"
+                "2. The fix should be efficient.\n"
+            )
+            messages = [
+                {"role": "system", "content": rules},
+                {"role": "user", "content": "Fix the following bug:\n" + error_message + "\n\nIn the code:\n" + code_str}
+            ]
+            suggested_fix = await self.generate_code_with_gpt4(messages)
+        
             # Log the suggested fix in Weaviate
             self.store_data_in_weaviate("CodeFix", {"originalCode": code_str, "suggestedFix": suggested_fix, "quantumID": str(self.generate_quantum_id(code_str))})
-            
+        
             return f"Bug found and logged. Suggested fix:\n{suggested_fix}"
         else:
             return "No bugs found"
+
 
     def generate_quantum_id(self, context):
         """
@@ -256,24 +284,6 @@ class QuantumCodeManager:
             print(f"An error occurred while generating the Quantum ID: {e}")
             return None
 
-    async def store_data_in_weaviate(self, class_name, data):
-        try:
-            # Generate a deterministic UUID based on the data
-            unique_id = generate_uuid5(data)
-            
-            # Create the data object in Weaviate asynchronously
-            async with self.session.post(
-                f"{self.client.url}/objects",
-                json={
-                    "class": class_name,
-                    "id": unique_id,
-                    "properties": data
-                }
-            ) as response:
-                if response.status != 200:
-                    print(f"Failed to store data: {await response.text()}")
-        except Exception as e:
-            print(f"Error storing data in Weaviate: {e}")
 
     async def retrieve_relevant_code_from_weaviate(self, quantum_id):
         try:
@@ -300,14 +310,41 @@ class QuantumCodeManager:
             print(f"Error retrieving data from Weaviate: {e}")
 
     async def identify_placeholders_with_gpt4(self, code_str):
-        # Assuming you have the OpenAI API set up
-        response = openai.ChatCompletion.create(
-            model='gpt-4',
-            messages=[{"role": "system", "content": f"Identify placeholders in the following Python code: {code_str}"}]
-        )
-        identified_placeholders = response['choices'][0]['message']['content'].split('\n')
-        lines = code_str.split('\n')
-        return {ph: i for i, line in enumerate(lines) for ph in identified_placeholders if ph in line}
+        try:
+            # Debugging line to check the received code_str
+            print(f"Debug: Received code_str = {code_str}")
+
+            # Define the rules and the prompt
+            rules = (
+                "Rules for Identifying Placeholders:\n"
+                "1. Identify all placeholders in the code.\n"
+            )
+            messages = [
+                {"role": "system", "content": rules},
+                {"role": "user", "content": "Identify placeholders in the following Python code:\n" + code_str}
+            ]
+
+            # Call the GPT-4 API
+            response = openai.ChatCompletion.create(
+                model='gpt-4',
+                messages=messages
+            )
+            identified_placeholders = response['choices'][0]['message']['content'].split('\n')
+
+            # Create a dictionary to store line numbers where placeholders are identified
+            lines = code_str.split('\n')
+            line_numbers_dict = {ph: i for i, line in enumerate(lines) for ph in identified_placeholders if ph in line}
+
+            # Return the dictionary
+            return line_numbers_dict
+
+        except Exception as e:
+            # Log the exception for debugging
+            print(f"An error occurred while identifying placeholders: {e}")
+
+            # Return an empty dictionary to indicate that no placeholders were identified
+            return {}
+
 
     async def generate_code_with_gpt4(self, context):
         rules = (
@@ -320,20 +357,42 @@ class QuantumCodeManager:
             "6. The code should be modular and reusable.\n"
             "7. If external libraries are used, they should be commonly used and well-maintained.\n"
             "8. The code should be directly related to the following context:\n"
-            f"{context}\n\n"
-            "Additional Information:\n"
-            "- This application uses GPT-4 to identify and fill code placeholders.\n"
-            "- A unique Quantum ID is generated for each code snippet, which is used for future reference and retrieval."
         )
+        messages = [
+            {"role": "system", "content": rules},
+            {"role": "user", "content": context}
+        ]
         response = openai.ChatCompletion.create(
             model='gpt-4',
-            messages=[{"role": "system", "content": rules}]
+            messages=messages
         )
         return response['choices'][0]['message']['content']
 
     @eel.expose
     async def identify_placeholders(self, code_str):
-        return list((await self.identify_placeholders_with_gpt4(code_str)).values())
+        try:
+            # Debugging line to check the received code_str
+            print(f"Debug: Received code_str = {code_str}")
+
+            # Call the identify_placeholders_with_gpt4 method and get the values
+            identified_placeholders = await self.identify_placeholders_with_gpt4(code_str)
+        
+            # Create a dictionary to store line numbers where placeholders are identified
+            line_numbers_dict = {}
+        
+            for placeholder, line_num in identified_placeholders.items():
+                line_numbers_dict[placeholder] = line_num
+
+            # Return the dictionary
+            return line_numbers_dict
+        
+        except Exception as e:
+            # Log the exception for debugging
+            print(f"An error occurred while identifying placeholders: {e}")
+        
+            # Return an empty dictionary to indicate that no placeholders were identified
+            return {}
+
     
     @eel.expose
     def set_openai_api_key(self, api_key):
@@ -383,18 +442,16 @@ class QuantumCodeManager:
         
         return '\n'.join(lines)
 
-def run_asyncio_tasks(manager):
-    loop = asyncio.get_event_loop()
+async def run_asyncio_tasks(manager):
     while True:
-        loop.run_until_complete(asyncio.sleep(1))
+        await asyncio.sleep(1)
 
-def start_eel():
+async def start_eel():
     eel.init('web')
     manager = QuantumCodeManager()
 
     # Suggest better quantum circuit logic using GPT-4
-    loop = asyncio.get_event_loop()
-    suggested_logic = loop.run_until_complete(manager.suggest_quantum_circuit_logic())
+    suggested_logic = await manager.suggest_quantum_circuit_logic()
     print(f"Suggested Quantum Circuit Logic:\n{suggested_logic}")
 
     eel.start('index.html', size=(720, 1280))
@@ -402,7 +459,7 @@ def start_eel():
 
 if __name__ == "__main__":
     # Start Eel and get the manager object
-    manager = start_eel()
+    manager = asyncio.run(start_eel())
 
     # Run asyncio event loop in the main thread
-    run_asyncio_tasks(manager)
+    asyncio.run(run_asyncio_tasks(manager))
