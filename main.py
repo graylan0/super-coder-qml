@@ -55,7 +55,6 @@ def normalize(value, min_value, max_value):
 
 class QuantumCodeManager:
     def __init__(self):
-        self.client = Client("http://localhost:8080")
         self.pipe = pipeline("image-classification", model="cafeai/cafe_aesthetic")
         self.session = aiohttp.ClientSession()
         self.circuit_vector = []  # Initialize an empty list to store circuits
@@ -66,19 +65,21 @@ class QuantumCodeManager:
             n_gpu_layers=-1,
             n_ctx=3900,
         )
+
         # Load settings from config.json
         try:
             with open("config.json", "r") as f:
                 config = json.load(f)
-            self.openai_api_key = config["openai_api_key"]
             weaviate_client_url = config.get("weaviate_client_url", "http://localhost:8080")
+            weaviate_api_key = config.get("weaviate_api_key", None)  # Get Weaviate API key
         except (FileNotFoundError, KeyError, json.JSONDecodeError) as e:
             print(f"Error reading config.json: {e}")
-            self.openai_api_key = None
             weaviate_client_url = "http://localhost:8080"
+            weaviate_api_key = None
 
-        # Initialize Weaviate client
-        self.client = Client(weaviate_client_url)
+        # Initialize Weaviate client with API key
+        self.client = Client(weaviate_client_url, api_key=weaviate_api_key)
+
 
         # Initialize OpenAI API key
         if self.openai_api_key:
