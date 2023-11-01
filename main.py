@@ -10,13 +10,9 @@ import json
 import re
 import logging
 import uuid
-import pytesseract
 import sounddevice as sd
-import threading
 import aiohttp
-import speech_recognition as sr
 from typing import Callable, Any
-from concurrent.futures import ThreadPoolExecutor
 from weaviate.util import generate_uuid5
 from transformers import pipeline
 from scipy.io.wavfile import write as write_wav
@@ -24,22 +20,6 @@ from weaviate import Client
 from llama_cpp import Llama
 from bark import generate_audio, SAMPLE_RATE
 
-# Initialize ThreadPoolExecutor
-executor = ThreadPoolExecutor(max_workers=3)
-
-# Initialize variables for speech recognition
-is_listening = False
-recognizer = sr.Recognizer()
-mic = sr.Microphone()
-
-def audio_to_text(audio_data):
-    try:
-        text = recognizer.recognize_google(audio_data)
-        return text
-    except sr.UnknownValueError:
-        return "Could not understand audio"
-    except sr.RequestError as e:
-        return f"Could not request results; {e}"
 
 # Function to generate audio for each sentence and add pauses
 def generate_audio_for_sentence(sentence):
@@ -47,14 +27,13 @@ def generate_audio_for_sentence(sentence):
     silence = np.zeros(int(0.75 * SAMPLE_RATE))  # quarter second of silence
     return np.concatenate([audio, silence])
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'  # Update the path accordingly
-
 def normalize(value, min_value, max_value):
     """Normalize a value to a given range."""
     return min_value + (max_value - min_value) * (value / 0xFFFFFFFFFFFFFFFF)
 
 class QuantumCodeManager:
     def __init__(self):
+        self.client = Client("http://localhost:8080")
         self.pipe = pipeline("image-classification", model="cafeai/cafe_aesthetic")
         self.session = aiohttp.ClientSession()
         self.circuit_vector = []  # Initialize an empty list to store circuits
@@ -70,16 +49,15 @@ class QuantumCodeManager:
         try:
             with open("config.json", "r") as f:
                 config = json.load(f)
+            self.openai_api_key = config["openai_api_key"]
             weaviate_client_url = config.get("weaviate_client_url", "http://localhost:8080")
-            weaviate_api_key = config.get("weaviate_api_key", None)  # Get Weaviate API key
         except (FileNotFoundError, KeyError, json.JSONDecodeError) as e:
             print(f"Error reading config.json: {e}")
+            self.openai_api_key = None
             weaviate_client_url = "http://localhost:8080"
-            weaviate_api_key = None
 
-        # Initialize Weaviate client with API key
-        self.client = Client(weaviate_client_url, api_key=weaviate_api_key)
-
+        # Initialize Weaviate client
+        self.client = Client(weaviate_client_url)
 
         # Initialize OpenAI API key
         if self.openai_api_key:
@@ -102,7 +80,6 @@ class QuantumCodeManager:
         # For demonstration, let's assume the key topics are comments in the code
         return [line.split("#")[1].strip() for line in last_frame.split("\n") if "#" in line]
 
-
     # Function to generate and play audio for a message
     def generate_and_play_audio(message):
         sentences = re.split('(?<=[.!?]) +', message)
@@ -117,38 +94,6 @@ class QuantumCodeManager:
         write_wav(file_name, SAMPLE_RATE, audio)
         sd.play(audio, samplerate=SAMPLE_RATE)
         sd.wait()
-
-    # Function to start/stop speech recognition
-    @eel.expose
-    def set_speech_recognition_state(state):
-        global is_listening
-        is_listening = state
-
-    # Function to run continuous speech recognition
-    def continuous_speech_recognition():
-        global is_listening
-        with mic as source:
-            recognizer.adjust_for_ambient_noise(source)
-            while True:
-                if is_listening:
-                    try:
-                        audio_data = recognizer.listen(source, timeout=1)
-                        text = audio_to_text(audio_data)  # Convert audio to text
-                        if text not in ["Could not understand audio", ""]:
-                            asyncio.run(run_llm(text))
-                            eel.update_chat_box(f"User: {text}")
-                    except sr.WaitTimeoutError:
-                        continue
-                    except Exception as e:
-                        eel.update_chat_box(f"An error occurred: {e}")
-                else:
-                    time.sleep(1)
-
-        
-    # Start the continuous speech recognition in a separate thread
-    thread = threading.Thread(target=continuous_speech_recognition)
-    thread.daemon = True  # Set daemon to True
-    thread.start()
 
     async def generate_with_llama2(self, last_frame, frame_num, frames):
         # Extract key topics from the last frame
@@ -200,7 +145,6 @@ class QuantumCodeManager:
         qml.CNOT(wires=[0, 1])
         return [qml.expval(qml.PauliZ(i)) for i in range(2)]
 
-
     async def store_data_in_weaviate(self, class_name: str, data: Any):
         unique_id = generate_uuid5(data)
         async with self.session.post(
@@ -233,7 +177,6 @@ class QuantumCodeManager:
             else:
                 return {"error": "Failed to inject data"}
 
-
     async def suggest_quantum_circuit_logic(self):
         """Use GPT-4 to suggest better logic for the quantum circuit."""
         # Get the last circuit in the vector for reference
@@ -263,7 +206,6 @@ class QuantumCodeManager:
             return None
 
         return suggested_logic.strip()
-
 
     async def optimize_code_with_llm(self, line):
         rules = "Rules for Code Optimization:\n1. The code must be efficient.\n2. Follow Pythonic practices.\n"
@@ -304,7 +246,6 @@ class QuantumCodeManager:
                 return entangled_id
 
         return None
-
 
     async def entangle_and_optimize_lines(self, code_str):
         """Entangle and optimize lines of code."""
@@ -409,7 +350,6 @@ class QuantumCodeManager:
         else:
             return "No bugs found"
 
-
     def generate_quantum_id(self, context):
         """
         Generate a Quantum ID based on the given context.
@@ -434,7 +374,6 @@ class QuantumCodeManager:
         except Exception as e:
             print(f"An error occurred while generating the Quantum ID: {e}")
             return None
-
 
     async def retrieve_relevant_code_from_weaviate(self, quantum_id):
         try:
@@ -496,7 +435,6 @@ class QuantumCodeManager:
             # Return an empty dictionary to indicate that no placeholders were identified
             return {}
 
-
     async def generate_code_with_gpt4(self, context):
         rules = (
             "Rules and Guidelines for Code Generation:\n"
@@ -544,7 +482,6 @@ class QuantumCodeManager:
             # Return an empty dictionary to indicate that no placeholders were identified
             return {}
 
-    
     @eel.expose
     def set_openai_api_key(self, api_key):
         openai.api_key = api_key
