@@ -1,31 +1,19 @@
-import eel
+mport eel
 import openai
 import numpy as np
 import pennylane as qml
 import asyncio
-import time
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import traceback
-import json
-import re
-import logging
 import uuid
-import sounddevice as sd
+import json
+import logging
 import aiohttp
 from typing import Callable, Any
-from weaviate.util import generate_uuid5
-from transformers import pipeline
-from scipy.io.wavfile import write as write_wav
-from weaviate import Client
 from llama_cpp import Llama
-from bark import generate_audio, SAMPLE_RATE
+import weaviate
 
-
-# Function to generate audio for each sentence and add pauses
-def generate_audio_for_sentence(sentence):
-    audio = generate_audio(sentence, history_prompt="v2/en_speaker_6")
-    silence = np.zeros(int(0.75 * SAMPLE_RATE))  # quarter second of silence
-    return np.concatenate([audio, silence])
 
 def normalize(value, min_value, max_value):
     """Normalize a value to a given range."""
@@ -33,8 +21,6 @@ def normalize(value, min_value, max_value):
 
 class QuantumCodeManager:
     def __init__(self):
-        self.client = Client("http://localhost:8080")
-        self.pipe = pipeline("image-classification", model="cafeai/cafe_aesthetic")
         self.session = aiohttp.ClientSession()
         self.circuit_vector = []  # Initialize an empty list to store circuits
 
@@ -50,18 +36,23 @@ class QuantumCodeManager:
             with open("config.json", "r") as f:
                 config = json.load(f)
             self.openai_api_key = config["openai_api_key"]
-            weaviate_client_url = config.get("weaviate_client_url", "http://localhost:8080")
+            self.weaviate_client_url = config["weaviate_client_url"]
+            self.weaviate_api_key = config["weaviate_api_key"]
+            
+            # Set OpenAI API key
+            openai.api_key = self.openai_api_key
+            
+            # Instantiate the Weaviate client with the loaded config
+            self.weaviate_client = weaviate.Client(
+                url=self.weaviate_client_url,
+                auth_client_secret=weaviate.AuthApiKey(api_key=self.weaviate_api_key)
+            )
         except (FileNotFoundError, KeyError, json.JSONDecodeError) as e:
             print(f"Error reading config.json: {e}")
             self.openai_api_key = None
-            weaviate_client_url = "http://localhost:8080"
+            self.weaviate_client_url = None
+            self.weaviate_api_key = None
 
-        # Initialize Weaviate client
-        self.client = Client(weaviate_client_url)
-
-        # Initialize OpenAI API key
-        if self.openai_api_key:
-            openai.api_key = self.openai_api_key  # Consider using OpenAI's official method if available
 
         # Initialize quantum device
         self.dev = qml.device("default.qubit", wires=2)
@@ -72,28 +63,11 @@ class QuantumCodeManager:
     def __del__(self):
         self.session.close()
 
-    def evaluate_aesthetic(self, image_path):
-        result = self.pipe(image_path)
-        return result[0]['score']
 
     def extract_key_topics(self, last_frame):
         # For demonstration, let's assume the key topics are comments in the code
         return [line.split("#")[1].strip() for line in last_frame.split("\n") if "#" in line]
 
-    # Function to generate and play audio for a message
-    def generate_and_play_audio(message):
-        sentences = re.split('(?<=[.!?]) +', message)
-        audio_arrays = []
-    
-        for sentence in sentences:
-            audio_arrays.append(generate_audio_for_sentence(sentence))
-        
-        audio = np.concatenate(audio_arrays)
-    
-        file_name = str(uuid.uuid4()) + ".wav"
-        write_wav(file_name, SAMPLE_RATE, audio)
-        sd.play(audio, samplerate=SAMPLE_RATE)
-        sd.wait()
 
     async def generate_with_llama2(self, last_frame, frame_num, frames):
         # Extract key topics from the last frame
@@ -146,7 +120,8 @@ class QuantumCodeManager:
         return [qml.expval(qml.PauliZ(i)) for i in range(2)]
 
     async def store_data_in_weaviate(self, class_name: str, data: Any):
-        unique_id = generate_uuid5(data)
+        # Generate a unique UUID based on the data string
+        unique_id = uuid.uuid5(uuid.NAMESPACE_DNS, data)   
         async with self.session.post(
             f"{self.client.url}/objects",
             json={
@@ -161,7 +136,8 @@ class QuantumCodeManager:
                 return {"error": "Failed to store data"}
 
     async def inject_data_into_weaviate(self, data: str):
-        unique_id = generate_uuid5(data)
+        # Generate a unique UUID based on the data string
+        unique_id = uuid.uuid5(uuid.NAMESPACE_DNS, data)       
         async with self.session.post(
             f"{self.client.url}/objects",
             json={
@@ -179,34 +155,39 @@ class QuantumCodeManager:
 
     async def suggest_quantum_circuit_logic(self):
         """Use GPT-4 to suggest better logic for the quantum circuit."""
-        # Get the last circuit in the vector for reference
-        last_circuit = self.circuit_vector[-1].__name__ if self.circuit_vector else "None"
-        print(f"Last circuit logic: {last_circuit}")  # Debugging statement
-
-        rules = (
-            "Rules and Guidelines for Quantum Circuit Logic:\n"
-            "1. The logic must be compatible with the Pennylane library.\n"
-            "2. The logic should aim to solve optimization problems.\n"
-            "3. Include necessary comments to explain the circuit.\n"
-            "4. The logic should be efficient and optimized for performance.\n"
-        )
-        prompt_for_logic = f"The last circuit used was: {last_circuit}"
-        messages = [
-            {"role": "system", "content": rules},
-            {"role": "user", "content": prompt_for_logic}
-        ]
-        suggested_logic = await self.generate_code_with_gpt4(messages)
-
-        # Strip the triple backticks if they exist
-        if suggested_logic.startswith("```") and suggested_logic.endswith("```"):
-            suggested_logic = suggested_logic[3:-3]
-
-        if not suggested_logic:
-            print("Error: GPT-4 did not return any suggested logic.")
+        try:
+            # Get the last circuit in the vector for reference
+            last_circuit = self.circuit_vector[-1].__name__ if self.circuit_vector else "None"
+        
+            # Define rules and prompt
+            system_msg = "Rules and Guidelines for Quantum Circuit Logic:\n" \
+                         "1. The logic must be compatible with the Pennylane library.\n" \
+                         "2. The logic should aim to solve optimization problems.\n" \
+                         "3. Include necessary comments to explain the circuit.\n" \
+                         "4. The logic should be efficient and optimized for performance.\n"
+        
+            user_msg = f"The last circuit used was: {last_circuit}"
+        
+            # Format the messages
+            msgs = [{"role": "system", "content": system_msg},
+                    {"role": "user", "content": user_msg}]
+        
+            # Call the OpenAI API
+            response = openai.ChatCompletion.create(model="gpt-4", messages=msgs)
+        
+            # Check the status code
+            status_code = response["choices"][0]["finish_reason"]
+            assert status_code == "stop", f"The status code was {status_code}."
+        
+            # Extract the suggested logic
+            suggested_logic = response["choices"][0]["message"]["content"]
+        
+            return suggested_logic.strip()
+    
+        except Exception as e:
+            print(f"An error occurred: {e}")
             return None
-
-        return suggested_logic.strip()
-
+    
     async def optimize_code_with_llm(self, line):
         rules = "Rules for Code Optimization:\n1. The code must be efficient.\n2. Follow Pythonic practices.\n"
         prompt = f"Optimize the following line of code:\n{line}"
@@ -435,7 +416,7 @@ class QuantumCodeManager:
             # Return an empty dictionary to indicate that no placeholders were identified
             return {}
 
-    async def generate_code_with_gpt4(self, context):
+    def synchronous_generate_code_with_gpt4(self, context):
         rules = (
             "Rules and Guidelines for Code Generation:\n"
             "1. The code must be Pythonic and follow PEP 8 guidelines.\n"
@@ -451,11 +432,26 @@ class QuantumCodeManager:
             {"role": "system", "content": rules},
             {"role": "user", "content": context}
         ]
-        response = openai.ChatCompletion.create(
-            model='gpt-4',
-            messages=messages
-        )
-        return response['choices'][0]['message']['content']
+        
+        try:
+            response = openai.ChatCompletion.create(
+                model='gpt-4',
+                messages=messages
+            )
+            
+            if 'choices' in response and len(response['choices']) > 0:
+                return response['choices'][0]['message']['content']
+            else:
+                return "Failed to generate code. The response object is missing the 'choices' field."
+        except Exception as e:
+            return f"An error occurred: {e}"
+
+    async def generate_code_with_gpt4(self, context):
+        loop = asyncio.get_event_loop()
+        with ThreadPoolExecutor() as executor:
+            result = await loop.run_in_executor(executor, self.synchronous_generate_code_with_gpt4, context)
+        return result
+
 
     @eel.expose
     async def identify_placeholders(self, code_str):
@@ -489,19 +485,6 @@ class QuantumCodeManager:
         with open("config.json", "r+") as f:
             config = json.load(f)
             config["openai_api_key"] = api_key
-            f.seek(0)
-            json.dump(config, f)
-            f.truncate()
-
-    @eel.expose
-    def set_weaviate_client_url(self, client_url):
-        # Update the client URL in the Python class
-        manager.client = Client(client_url)
-    
-        # Save the client URL to config.json
-        with open("config.json", "r+") as f:
-            config = json.load(f)
-            config["weaviate_client_url"] = client_url
             f.seek(0)
             json.dump(config, f)
             f.truncate()
