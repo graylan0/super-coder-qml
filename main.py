@@ -1,4 +1,4 @@
-mport eel
+import eel
 import openai
 import numpy as np
 import pennylane as qml
